@@ -1,0 +1,5 @@
+name: TabCompleter
+version: 2.0
+main: net.gravijet.tabcompleter.bungeecord.BungeeMain
+author: gravijet
+description: Restricts tab completion and command execution on BungeeCord.

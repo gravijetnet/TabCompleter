@@ -1,0 +1,31 @@
+name: TabCompleter
+version: 2.0
+main: net.gravijet.tabcompleter.spigot.SpigotMain
+description: Restricts tab completion and command execution based on permissions.
+author: gravijet
+
+commands:
+  tabcompleter:
+    description: TabCompleter management command
+    usage: /tabcompleter [reload]
+    permission: tabcompleter.admin
+
+permissions:
+  tabcompleter.admin:
+    description: Reload the plugin configuration
+    default: op
+  tabcompleter.bypass:
+    description: Bypass all tab-completion and command restrictions
+    default: op
+  tabcompleter.reload:
+    description: Reload the plugin configuration
+    default: op
+  tabcompleter.mod:
+    description: Access to mod-group commands
+    default: false
+  tabcompleter.sup:
+    description: Access to support-group commands
+    default: false
+  tabcompleter.builder:
+    description: Access to builder-group commands
+    default: false
