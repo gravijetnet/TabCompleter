@@ -1,0 +1,48 @@
+# TabCompleter Configuration
+# Color codes: https://htmlcolorcodes.com/minecraft-color-codes/
+
+# Prefix shown before all plugin messages. Leave empty ("") for none.
+prefix: ""
+
+# Players with this permission bypass all restrictions.
+bypass-permission: tabcompleter.bypass
+
+# Permission required to run /tabcompleter reload.
+reload-permission: tabcompleter.reload
+
+# Message shown when a player executes a command they are not allowed to use.
+no-permission-message: "&cThis command does not exist."
+
+# Commands visible in tab-completion for every player (no special permission needed).
+allowed-tab-commands:
+  - tabcompleter
+  - help
+  - report
+  - lobby
+  - hub
+  - l
+  - discord
+  - list
+  - helpop
+
+# Permission-based command groups.
+# Players who have a group's permission also see that group's commands.
+groups:
+  mod:
+    permission: "tabcompleter.mod"
+    commands:
+      - ban
+      - mute
+      - tempban
+  sup:
+    permission: "tabcompleter.sup"
+    commands:
+      - punish
+      - kick
+      - warn
+      - mute
+  builder:
+    permission: "tabcompleter.builder"
+    commands:
+      - wand
+      - build
