@@ -42,6 +42,7 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+            if (!plugin.getServer().getCommandManager().hasCommand(baseCmd)) return;
             Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
             if (!allowed.contains(baseCmd)) event.setCancelled(true);
             return;

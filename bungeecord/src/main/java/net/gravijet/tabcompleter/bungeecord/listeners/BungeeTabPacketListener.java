@@ -42,6 +42,9 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+            boolean isProxyCommand = plugin.getProxy().getPluginManager().getCommands()
+                    .stream().anyMatch(e -> e.getKey().equalsIgnoreCase(baseCmd));
+            if (!isProxyCommand) return;
             Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
             if (!allowed.contains(baseCmd)) event.setCancelled(true);
             return;
