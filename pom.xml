@@ -21,7 +21,7 @@
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <packetevents.version>2.6.0</packetevents.version>
+        <packetevents.version>2.11.2</packetevents.version>
         <snakeyaml.version>1.33</snakeyaml.version>
     </properties>
 
