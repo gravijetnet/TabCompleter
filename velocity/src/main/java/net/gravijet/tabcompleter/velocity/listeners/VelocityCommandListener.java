@@ -24,6 +24,7 @@ public class VelocityCommandListener {
         if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
 
         String cmd = event.getCommand().split(" ", 2)[0].toLowerCase();
+        if (!plugin.getServer().getCommandManager().hasCommand(cmd)) return;
         if (CommandFilter.isCommandAllowed(plugin.getPluginConfig(), player::hasPermission, cmd)) return;
 
         event.setResult(CommandExecuteEvent.CommandResult.denied());

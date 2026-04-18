@@ -37,6 +37,9 @@ public class BungeeChatListener implements Listener {
         if (message == null || !message.startsWith("/")) return;
 
         String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
+        boolean isProxyCommand = plugin.getProxy().getPluginManager().getCommands()
+                .stream().anyMatch(e -> e.getKey().equalsIgnoreCase(cmd));
+        if (!isProxyCommand) return;
         if (CommandFilter.isCommandAllowed(plugin.getPluginConfig(), player::hasPermission, cmd)) return;
 
         event.setCancelled(true);
