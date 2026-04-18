@@ -4,9 +4,12 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
+import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.manager.server.ServerVersion;
+import com.github.retrooper.packetevents.protocol.chat.Node;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTabComplete;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDeclareCommands;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTabComplete;
 import net.gravijet.tabcompleter.bungeecord.BungeeMain;
 import net.gravijet.tabcompleter.core.CommandFilter;
@@ -55,6 +58,49 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
 
         event.setCancelled(true);
         sendSuggestions(event, clientPacket, typed, suggestions);
+    }
+
+    @Override
+    public void onPacketSend(PacketSendEvent event) {
+        if (event.getPacketType() != PacketType.Play.Server.DECLARE_COMMANDS) return;
+
+        ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
+        if (player == null) return;
+        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
+
+        Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
+
+        WrapperPlayServerDeclareCommands wrapper = new WrapperPlayServerDeclareCommands(event);
+        List<Node> nodes = wrapper.getNodes();
+        int rootIdx = wrapper.getRootIndex();
+
+        if (rootIdx < 0 || rootIdx >= nodes.size()) return;
+
+        Node root = nodes.get(rootIdx);
+        List<Integer> children = root.getChildren();
+        if (children == null || children.isEmpty()) return;
+
+        List<Integer> filtered = new ArrayList<>();
+        boolean changed = false;
+        for (int idx : children) {
+            if (idx < 0 || idx >= nodes.size()) { filtered.add(idx); continue; }
+            Node child = nodes.get(idx);
+            if ((child.getFlags() & Node.TYPE_MASK) != Node.TYPE_LITERAL) { filtered.add(idx); continue; }
+            String name = child.getName().orElse(null);
+            if (name == null) { filtered.add(idx); continue; }
+            String lower = name.toLowerCase();
+            boolean isProxyCommand = plugin.getProxy().getPluginManager().getCommands()
+                    .stream().anyMatch(e -> e.getKey().equalsIgnoreCase(lower));
+            if (isProxyCommand && !allowed.contains(lower)) {
+                changed = true;
+            } else {
+                filtered.add(idx);
+            }
+        }
+
+        if (!changed) return;
+        root.setChildren(filtered);
+        event.markForReEncode(true);
     }
 
     private void sendSuggestions(PacketReceiveEvent event,
