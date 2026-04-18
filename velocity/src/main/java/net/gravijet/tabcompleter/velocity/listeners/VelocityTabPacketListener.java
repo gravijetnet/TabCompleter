@@ -45,7 +45,6 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            if (!plugin.getServer().getCommandManager().hasCommand(baseCmd)) return;
             Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
             if (!allowed.contains(baseCmd)) event.setCancelled(true);
             return;
@@ -87,7 +86,7 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
             String name = child.getName().orElse(null);
             if (name == null) { filtered.add(idx); continue; }
             String lower = name.toLowerCase();
-            if (plugin.getServer().getCommandManager().hasCommand(lower) && !allowed.contains(lower)) {
+            if (!allowed.contains(lower)) {
                 changed = true;
             } else {
                 filtered.add(idx);
