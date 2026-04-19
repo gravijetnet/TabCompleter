@@ -53,6 +53,7 @@ public class TabCompleterCommand implements SimpleCommand {
 
     @Override
     public boolean hasPermission(Invocation invocation) {
-        return invocation.source().hasPermission("tabcompleter.admin");
+        return invocation.source().hasPermission(plugin.getPluginConfig().getReloadPermission())
+                || invocation.source().hasPermission("*");
     }
 }

@@ -21,15 +21,19 @@ public class VelocityCommandListener {
         if (!(event.getCommandSource() instanceof Player)) return;
 
         Player player = (Player) event.getCommandSource();
-        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
+        if (hasBypass(player)) return;
 
         String cmd = event.getCommand().split(" ", 2)[0].toLowerCase();
-        if (!plugin.getServer().getCommandManager().hasCommand(cmd)) return;
-        if (CommandFilter.isCommandAllowed(plugin.getPluginConfig(), player::hasPermission, cmd)) return;
+        if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
 
         event.setResult(CommandExecuteEvent.CommandResult.denied());
         player.sendMessage(LegacyComponentSerializer.legacyAmpersand()
                 .deserialize(plugin.getPluginConfig().getPrefix()
                         + plugin.getPluginConfig().getNoPermissionMessage()));
+    }
+
+    private boolean hasBypass(Player player) {
+        String perm = plugin.getPluginConfig().getBypassPermission();
+        return player.hasPermission(perm) || player.hasPermission("*");
     }
 }

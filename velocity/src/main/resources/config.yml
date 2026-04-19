@@ -6,33 +6,10 @@ bypass-permission: tabcompleter.bypass
 reload-permission: tabcompleter.reload
 no-permission-message: "&cThis command does not exist."
 
-allowed-tab-commands:
-  - tabcompleter
-  - help
-  - report
-  - lobby
-  - hub
-  - l
-  - discord
-  - list
-  - helpop
-
-groups:
-  mod:
-    permission: "tabcompleter.mod"
-    commands:
-      - ban
-      - mute
-      - tempban
-  sup:
-    permission: "tabcompleter.sup"
-    commands:
-      - punish
-      - kick
-      - warn
-      - mute
-  builder:
-    permission: "tabcompleter.builder"
-    commands:
-      - wand
-      - build
+# Commands blocked from tab-completion and execution for all players.
+# Players with bypass-permission (or * permission) are never affected.
+blocked-commands:
+  - op
+  - deop
+  - stop
+  - reload
