@@ -37,7 +37,7 @@ public class TabCompleterCommand implements SimpleCommand {
         source.sendMessage(LegacyComponentSerializer.legacyAmpersand()
                 .deserialize(prefix + "&6TabCompleter v2.0 by gravijet."));
         source.sendMessage(LegacyComponentSerializer.legacyAmpersand()
-                .deserialize(prefix + "&6Usage: /tabcompleter reload"));
+                .deserialize(prefix + "&6Usage: /velocitytabcompleter reload"));
     }
 
     @Override
