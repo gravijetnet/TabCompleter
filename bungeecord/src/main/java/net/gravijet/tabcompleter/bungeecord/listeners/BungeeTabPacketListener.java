@@ -1,11 +1,9 @@
 package net.gravijet.tabcompleter.bungeecord.listeners;
 
-import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
-import com.github.retrooper.packetevents.manager.server.ServerVersion;
 import com.github.retrooper.packetevents.protocol.chat.Node;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTabComplete;
@@ -17,7 +15,6 @@ import net.md_5.bungee.api.connection.ProxiedPlayer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 public class BungeeTabPacketListener extends PacketListenerAbstract {
 
@@ -34,8 +31,7 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
 
         ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
         if (player == null) return;
-
-        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
+        if (hasBypass(player)) return;
 
         WrapperPlayClientTabComplete clientPacket = new WrapperPlayClientTabComplete(event);
         String text = clientPacket.getText();
@@ -45,27 +41,30 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
-            if (!allowed.contains(baseCmd)) event.setCancelled(true);
+            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
+                event.setCancelled(true);
+            }
+            // base not blocked → let through, backend handles arg suggestions
             return;
         }
 
-        String typed = afterSlash.toLowerCase();
-        List<String> suggestions = CommandFilter.filterSuggestions(plugin.getPluginConfig(), player::hasPermission, typed);
-
-        event.setCancelled(true);
-        sendSuggestions(event, clientPacket, typed, suggestions);
+        // prefix typing (no space) → let through; DECLARE_COMMANDS already hides blocked
+        // commands for 1.13+, and onPacketSend filters the TAB_COMPLETE response for older versions
     }
 
     @Override
     public void onPacketSend(PacketSendEvent event) {
-        if (event.getPacketType() != PacketType.Play.Server.DECLARE_COMMANDS) return;
+        if (event.getPacketType() == PacketType.Play.Server.DECLARE_COMMANDS) {
+            filterDeclareCommands(event);
+        } else if (event.getPacketType() == PacketType.Play.Server.TAB_COMPLETE) {
+            filterTabCompleteResponse(event);
+        }
+    }
 
+    private void filterDeclareCommands(PacketSendEvent event) {
         ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
         if (player == null) return;
-        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
-
-        Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
+        if (hasBypass(player)) return;
 
         WrapperPlayServerDeclareCommands wrapper = new WrapperPlayServerDeclareCommands(event);
         List<Node> nodes = wrapper.getNodes();
@@ -85,8 +84,7 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
             if ((child.getFlags() & Node.TYPE_MASK) != Node.TYPE_LITERAL) { filtered.add(idx); continue; }
             String name = child.getName().orElse(null);
             if (name == null) { filtered.add(idx); continue; }
-            String lower = name.toLowerCase();
-            if (!allowed.contains(lower)) {
+            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase())) {
                 changed = true;
             } else {
                 filtered.add(idx);
@@ -98,28 +96,35 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
         event.markForReEncode(true);
     }
 
-    private void sendSuggestions(PacketReceiveEvent event,
-                                  WrapperPlayClientTabComplete clientPacket,
-                                  String typed,
-                                  List<String> suggestions) {
-        ServerVersion ver = PacketEvents.getAPI().getServerManager().getVersion();
-        List<WrapperPlayServerTabComplete.CommandMatch> matches = new ArrayList<>();
+    private void filterTabCompleteResponse(PacketSendEvent event) {
+        ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
+        if (player == null) return;
+        if (hasBypass(player)) return;
 
-        if (ver.isNewerThanOrEquals(ServerVersion.V_1_13)) {
-            int txId = clientPacket.getTransactionId().orElse(0);
-            WrapperPlayServerTabComplete.CommandRange range =
-                    new WrapperPlayServerTabComplete.CommandRange(1, 1 + typed.length());
-            for (String s : suggestions) {
-                matches.add(new WrapperPlayServerTabComplete.CommandMatch(s));
+        WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
+        List<WrapperPlayServerTabComplete.CommandMatch> matches = wrapper.getCommandMatches();
+        if (matches == null || matches.isEmpty()) return;
+
+        List<WrapperPlayServerTabComplete.CommandMatch> filtered = new ArrayList<>();
+        boolean changed = false;
+        for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
+            String text = match.getText();
+            String name = text.startsWith("/") ? text.substring(1) : text;
+            if (!name.contains(" ") && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name)) {
+                changed = true;
+            } else {
+                filtered.add(match);
             }
-            event.getUser().sendPacket(new WrapperPlayServerTabComplete(txId, range, matches));
-        } else {
-            for (String s : suggestions) {
-                matches.add(new WrapperPlayServerTabComplete.CommandMatch("/" + s));
-            }
-            event.getUser().sendPacket(
-                    new WrapperPlayServerTabComplete(null,
-                            new WrapperPlayServerTabComplete.CommandRange(0, 0), matches));
         }
+
+        if (changed) {
+            wrapper.setCommandMatches(filtered);
+            event.markForReEncode(true);
+        }
+    }
+
+    private boolean hasBypass(ProxiedPlayer player) {
+        String perm = plugin.getPluginConfig().getBypassPermission();
+        return player.hasPermission(perm) || player.hasPermission("*");
     }
 }

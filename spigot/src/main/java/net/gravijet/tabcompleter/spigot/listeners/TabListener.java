@@ -18,23 +18,23 @@ public class TabListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onCommandLowest(PlayerCommandPreprocessEvent event) {
-        cancelIfNotAllowed(event, false);
+        cancelIfBlocked(event, false);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCommandHighest(PlayerCommandPreprocessEvent event) {
-        cancelIfNotAllowed(event, true);
+        cancelIfBlocked(event, true);
     }
 
-    private void cancelIfNotAllowed(PlayerCommandPreprocessEvent event, boolean sendMessage) {
+    private void cancelIfBlocked(PlayerCommandPreprocessEvent event, boolean sendMessage) {
         Player player = event.getPlayer();
-        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
+        if (hasBypass(player)) return;
 
         String message = event.getMessage();
         if (message == null || !message.startsWith("/")) return;
 
         String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
-        if (CommandFilter.isCommandAllowed(plugin.getPluginConfig(), player::hasPermission, cmd)) return;
+        if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
 
         event.setCancelled(true);
         if (sendMessage) {
@@ -42,5 +42,10 @@ public class TabListener implements Listener {
                     SpigotMain.color(plugin.getPluginConfig().getPrefix())
                     + SpigotMain.color(plugin.getPluginConfig().getNoPermissionMessage()));
         }
+    }
+
+    private boolean hasBypass(Player player) {
+        String perm = plugin.getPluginConfig().getBypassPermission();
+        return player.hasPermission(perm) || player.hasPermission("*");
     }
 }

@@ -1,10 +1,9 @@
 package net.gravijet.tabcompleter.spigot.listeners;
 
-import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
-import com.github.retrooper.packetevents.manager.server.ServerVersion;
+import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTabComplete;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTabComplete;
@@ -14,7 +13,6 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 public class TabPacketListener extends PacketListenerAbstract {
 
@@ -31,8 +29,7 @@ public class TabPacketListener extends PacketListenerAbstract {
 
         Player player = (Player) event.getPlayer();
         if (player == null) return;
-
-        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
+        if (hasBypass(player)) return;
 
         WrapperPlayClientTabComplete clientPacket = new WrapperPlayClientTabComplete(event);
         String text = clientPacket.getText();
@@ -42,41 +39,49 @@ public class TabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            Set<String> allowed = CommandFilter.buildAllowedSet(plugin.getPluginConfig(), player::hasPermission);
-            if (!allowed.contains(baseCmd)) event.setCancelled(true);
+            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
+                event.setCancelled(true);
+            }
+            // base not blocked → let through, server handles arg suggestions
             return;
         }
 
-        String typed = afterSlash.toLowerCase();
-        List<String> suggestions = CommandFilter.filterSuggestions(plugin.getPluginConfig(), player::hasPermission, typed);
-
-        event.setCancelled(true);
-        sendSuggestions(event, clientPacket, typed, suggestions);
+        // prefix typing (no space) → let through; onPacketSend will filter the response
     }
 
-    private void sendSuggestions(PacketReceiveEvent event,
-                                  WrapperPlayClientTabComplete clientPacket,
-                                  String typed,
-                                  List<String> suggestions) {
-        ServerVersion ver = PacketEvents.getAPI().getServerManager().getVersion();
+    @Override
+    public void onPacketSend(PacketSendEvent event) {
+        if (event.getPacketType() != PacketType.Play.Server.TAB_COMPLETE) return;
 
-        List<WrapperPlayServerTabComplete.CommandMatch> matches = new ArrayList<>();
+        Player player = (Player) event.getPlayer();
+        if (player == null) return;
+        if (hasBypass(player)) return;
 
-        if (ver.isNewerThanOrEquals(ServerVersion.V_1_13)) {
-            int txId = clientPacket.getTransactionId().orElse(0);
-            WrapperPlayServerTabComplete.CommandRange range =
-                    new WrapperPlayServerTabComplete.CommandRange(1, 1 + typed.length());
-            for (String s : suggestions) {
-                matches.add(new WrapperPlayServerTabComplete.CommandMatch(s));
+        WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
+        List<WrapperPlayServerTabComplete.CommandMatch> matches = wrapper.getCommandMatches();
+        if (matches == null || matches.isEmpty()) return;
+
+        List<WrapperPlayServerTabComplete.CommandMatch> filtered = new ArrayList<>();
+        boolean changed = false;
+        for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
+            String text = match.getText();
+            String name = text.startsWith("/") ? text.substring(1) : text;
+            // only strip blocked commands (pure names without spaces = command name, not arg)
+            if (!name.contains(" ") && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name)) {
+                changed = true;
+            } else {
+                filtered.add(match);
             }
-            event.getUser().sendPacket(new WrapperPlayServerTabComplete(txId, range, matches));
-        } else {
-            for (String s : suggestions) {
-                matches.add(new WrapperPlayServerTabComplete.CommandMatch("/" + s));
-            }
-            event.getUser().sendPacket(
-                    new WrapperPlayServerTabComplete(null,
-                            new WrapperPlayServerTabComplete.CommandRange(0, 0), matches));
         }
+
+        if (changed) {
+            wrapper.setCommandMatches(filtered);
+            event.markForReEncode(true);
+        }
+    }
+
+    private boolean hasBypass(Player player) {
+        String perm = plugin.getPluginConfig().getBypassPermission();
+        return player.hasPermission(perm) || player.hasPermission("*");
     }
 }

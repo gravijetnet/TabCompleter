@@ -18,29 +18,30 @@ public class BungeeChatListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onChatLowest(ChatEvent event) {
-        cancelIfNotAllowed(event, false);
+        cancelIfBlocked(event, false);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onChatHighest(ChatEvent event) {
-        cancelIfNotAllowed(event, true);
+        cancelIfBlocked(event, true);
     }
 
-    private void cancelIfNotAllowed(ChatEvent event, boolean sendMessage) {
-        if (event.isCancelled()) return;
+    private void cancelIfBlocked(ChatEvent event, boolean sendMessage) {
         if (!(event.getSender() instanceof ProxiedPlayer)) return;
 
         ProxiedPlayer player = (ProxiedPlayer) event.getSender();
-        if (player.hasPermission(plugin.getPluginConfig().getBypassPermission())) return;
+        if (hasBypass(player)) return;
 
         String message = event.getMessage();
         if (message == null || !message.startsWith("/")) return;
 
         String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
+
         boolean isProxyCommand = plugin.getProxy().getPluginManager().getCommands()
                 .stream().anyMatch(e -> e.getKey().equalsIgnoreCase(cmd));
         if (!isProxyCommand) return;
-        if (CommandFilter.isCommandAllowed(plugin.getPluginConfig(), player::hasPermission, cmd)) return;
+
+        if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
 
         event.setCancelled(true);
         if (sendMessage) {
@@ -48,5 +49,10 @@ public class BungeeChatListener implements Listener {
                     BungeeMain.color(plugin.getPluginConfig().getPrefix())
                     + BungeeMain.color(plugin.getPluginConfig().getNoPermissionMessage()));
         }
+    }
+
+    private boolean hasBypass(ProxiedPlayer player) {
+        String perm = plugin.getPluginConfig().getBypassPermission();
+        return player.hasPermission(perm) || player.hasPermission("*");
     }
 }

@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,28 +35,9 @@ public final class ConfigLoader {
         String bypassPerm  = str(data, "bypass-permission", "tabcompleter.bypass");
         String reloadPerm  = str(data, "reload-permission",  "tabcompleter.reload");
         String noPermMsg   = str(data, "no-permission-message", "&cThis command does not exist.");
-        List<String> allowedCmds = strList(data, "allowed-tab-commands");
+        List<String> blockedCmds = strList(data, "blocked-commands");
 
-        Map<String, GroupData> groups = new LinkedHashMap<>();
-        Object rawGroups = data.get("groups");
-        if (rawGroups instanceof Map) {
-            for (Map.Entry<?, ?> entry : ((Map<?, ?>) rawGroups).entrySet()) {
-                String name = String.valueOf(entry.getKey());
-                if (!(entry.getValue() instanceof Map)) continue;
-                Map<?, ?> sec = (Map<?, ?>) entry.getValue();
-                String perm = sec.containsKey("permission") ? String.valueOf(sec.get("permission")) : "";
-                List<String> cmds = new ArrayList<>();
-                Object rawCmds = sec.get("commands");
-                if (rawCmds instanceof List) {
-                    for (Object o : (List<?>) rawCmds) {
-                        if (o != null) cmds.add(String.valueOf(o));
-                    }
-                }
-                groups.put(name, new GroupData(perm, cmds));
-            }
-        }
-
-        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, allowedCmds, groups);
+        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, blockedCmds);
     }
 
     private static String str(Map<String, Object> data, String key, String def) {
