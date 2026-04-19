@@ -39,14 +39,12 @@ public class TabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
+            if (CommandFilter.isCommandFiltered(plugin.getPluginConfig(), baseCmd)) {
                 event.setCancelled(true);
             }
-            // base not blocked → let through, server handles arg suggestions
             return;
         }
 
-        // prefix typing (no space) → let through; onPacketSend will filter the response
     }
 
     @Override
@@ -66,8 +64,7 @@ public class TabPacketListener extends PacketListenerAbstract {
         for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
             String text = match.getText();
             String name = text.startsWith("/") ? text.substring(1) : text;
-            // only strip blocked commands (pure names without spaces = command name, not arg)
-            if (!name.contains(" ") && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name)) {
+            if (!name.contains(" ") && CommandFilter.isCommandFiltered(plugin.getPluginConfig(), name)) {
                 changed = true;
             } else {
                 filtered.add(match);

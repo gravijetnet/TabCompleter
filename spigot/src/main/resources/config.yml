@@ -6,7 +6,11 @@ bypass-permission: tabcompleter.bypass
 reload-permission: tabcompleter.reload
 no-permission-message: "&cThis command does not exist."
 
-# Commands blocked from tab-completion and execution for all players.
+# allowlist: only the listed commands are visible/usable for players without bypass-permission.
+# blocklist: only the listed commands are hidden/blocked for players without bypass-permission.
+mode: allowlist
+
+# Commands list — interpreted as allowlist or blocklist depending on the mode above.
 # Players with bypass-permission (or * permission) are never affected.
 blocked-commands:
   - op

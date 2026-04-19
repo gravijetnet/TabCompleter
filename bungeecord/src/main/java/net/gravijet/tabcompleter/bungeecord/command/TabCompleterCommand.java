@@ -12,7 +12,7 @@ public class TabCompleterCommand extends Command implements TabExecutor {
     private final BungeeMain plugin;
 
     public TabCompleterCommand(BungeeMain plugin) {
-        super("tabcompleter", "tabcompleter.admin", "tc");
+        super("bungeetabcompleter", "tabcompleter.admin", "btc");
         this.plugin = plugin;
     }
 
@@ -31,7 +31,7 @@ public class TabCompleterCommand extends Command implements TabExecutor {
         }
 
         sender.sendMessage(prefix + "\u00a76TabCompleter v" + plugin.getDescription().getVersion() + " by gravijet.");
-        sender.sendMessage(prefix + "\u00a76Usage: /tabcompleter reload");
+        sender.sendMessage(prefix + "\u00a76Usage: /bungeetabcompleter reload");
     }
 
     @Override

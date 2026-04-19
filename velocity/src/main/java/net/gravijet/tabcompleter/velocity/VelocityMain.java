@@ -63,8 +63,8 @@ public class VelocityMain {
         registerListeners();
 
         server.getCommandManager().register(
-                server.getCommandManager().metaBuilder("tabcompleter")
-                        .aliases("tc")
+                server.getCommandManager().metaBuilder("velocitytabcompleter")
+                        .aliases("vtc")
                         .plugin(this)
                         .build(),
                 new TabCompleterCommand(this));

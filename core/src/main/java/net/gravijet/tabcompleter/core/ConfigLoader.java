@@ -36,8 +36,9 @@ public final class ConfigLoader {
         String reloadPerm  = str(data, "reload-permission",  "tabcompleter.reload");
         String noPermMsg   = str(data, "no-permission-message", "&cThis command does not exist.");
         List<String> blockedCmds = strList(data, "blocked-commands");
+        String spigotMode  = str(data, "mode", "allowlist");
 
-        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, blockedCmds);
+        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, blockedCmds, spigotMode);
     }
 
     private static String str(Map<String, Object> data, String key, String def) {
