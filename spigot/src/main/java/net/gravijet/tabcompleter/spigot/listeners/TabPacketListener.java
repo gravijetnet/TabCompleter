@@ -45,6 +45,9 @@ public class TabPacketListener extends PacketListenerAbstract {
             return;
         }
 
+        if (!afterSlash.isEmpty() && CommandFilter.isCommandFiltered(plugin.getPluginConfig(), afterSlash.toLowerCase())) {
+            event.setCancelled(true);
+        }
     }
 
     @Override

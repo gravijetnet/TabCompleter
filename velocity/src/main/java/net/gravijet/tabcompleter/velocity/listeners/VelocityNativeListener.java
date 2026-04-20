@@ -4,7 +4,7 @@ import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.event.Subscribe;
-import com.velocitypowered.api.event.player.PlayerAvailableCommandsEvent;
+import com.velocitypowered.api.event.command.PlayerAvailableCommandsEvent;
 import com.velocitypowered.api.event.player.TabCompleteEvent;
 import com.velocitypowered.api.proxy.Player;
 import net.gravijet.tabcompleter.core.CommandFilter;
@@ -44,7 +44,7 @@ public class VelocityNativeListener {
         if (CHILDREN_FIELD == null) return;
 
         try {
-            RootCommandNode<CommandSource> root = event.getRootNode();
+            RootCommandNode<CommandSource> root = (RootCommandNode<CommandSource>) event.getRootNode();
 
             @SuppressWarnings("unchecked")
             Map<String, CommandNode<CommandSource>> children =
