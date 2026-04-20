@@ -29,9 +29,8 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
     public void onPacketReceive(PacketReceiveEvent event) {
         if (event.getPacketType() != PacketType.Play.Client.TAB_COMPLETE) return;
 
-        ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
-        if (player == null) return;
-        if (hasBypass(player)) return;
+        ProxiedPlayer player = resolvePlayer(event.getPlayer());
+        if (player != null && hasBypass(player)) return;
 
         WrapperPlayClientTabComplete clientPacket = new WrapperPlayClientTabComplete(event);
         String text = clientPacket.getText();
@@ -44,12 +43,13 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
             if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
                 event.setCancelled(true);
             }
-            // base not blocked → let through, backend handles arg suggestions
             return;
         }
 
-        // prefix typing (no space) → let through; DECLARE_COMMANDS already hides blocked
-        // commands for 1.13+, and onPacketSend filters the TAB_COMPLETE response for older versions
+        // no space: cancel only if the exact typed command is blocked
+        if (!afterSlash.isEmpty() && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), afterSlash.toLowerCase())) {
+            event.setCancelled(true);
+        }
     }
 
     @Override
@@ -62,9 +62,8 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
     }
 
     private void filterDeclareCommands(PacketSendEvent event) {
-        ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
-        if (player == null) return;
-        if (hasBypass(player)) return;
+        ProxiedPlayer player = resolvePlayer(event.getPlayer());
+        if (player != null && hasBypass(player)) return;
 
         WrapperPlayServerDeclareCommands wrapper = new WrapperPlayServerDeclareCommands(event);
         List<Node> nodes = wrapper.getNodes();
@@ -93,13 +92,13 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
 
         if (!changed) return;
         root.setChildren(filtered);
+        wrapper.setNodes(nodes);
         event.markForReEncode(true);
     }
 
     private void filterTabCompleteResponse(PacketSendEvent event) {
-        ProxiedPlayer player = (ProxiedPlayer) event.getPlayer();
-        if (player == null) return;
-        if (hasBypass(player)) return;
+        ProxiedPlayer player = resolvePlayer(event.getPlayer());
+        if (player != null && hasBypass(player)) return;
 
         WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
         List<WrapperPlayServerTabComplete.CommandMatch> matches = wrapper.getCommandMatches();
@@ -121,6 +120,11 @@ public class BungeeTabPacketListener extends PacketListenerAbstract {
             wrapper.setCommandMatches(filtered);
             event.markForReEncode(true);
         }
+    }
+
+    private ProxiedPlayer resolvePlayer(Object raw) {
+        if (raw instanceof ProxiedPlayer) return (ProxiedPlayer) raw;
+        return null;
     }
 
     private boolean hasBypass(ProxiedPlayer player) {

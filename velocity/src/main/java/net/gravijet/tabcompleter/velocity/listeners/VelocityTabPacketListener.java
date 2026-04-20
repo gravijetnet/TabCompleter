@@ -1,11 +1,9 @@
 package net.gravijet.tabcompleter.velocity.listeners;
 
-import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
-import com.github.retrooper.packetevents.manager.server.ServerVersion;
 import com.github.retrooper.packetevents.protocol.chat.Node;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTabComplete;
@@ -31,9 +29,8 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
     public void onPacketReceive(PacketReceiveEvent event) {
         if (event.getPacketType() != PacketType.Play.Client.TAB_COMPLETE) return;
 
-        Player player = (Player) event.getPlayer();
-        if (player == null) return;
-        if (hasBypass(player)) return;
+        Player player = resolvePlayer(event.getPlayer());
+        if (player != null && hasBypass(player)) return;
 
         WrapperPlayClientTabComplete clientPacket = new WrapperPlayClientTabComplete(event);
         String text = clientPacket.getText();
@@ -46,12 +43,13 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
             if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
                 event.setCancelled(true);
             }
-            // base not blocked → let through, backend handles arg suggestions
             return;
         }
 
-        // prefix typing (no space) → let through; DECLARE_COMMANDS already hides blocked
-        // commands for 1.13+, and onPacketSend filters the TAB_COMPLETE response for older versions
+        // no space: cancel only if the exact typed command is blocked
+        if (!afterSlash.isEmpty() && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), afterSlash.toLowerCase())) {
+            event.setCancelled(true);
+        }
     }
 
     @Override
@@ -64,9 +62,8 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
     }
 
     private void filterDeclareCommands(PacketSendEvent event) {
-        Player player = (Player) event.getPlayer();
-        if (player == null) return;
-        if (hasBypass(player)) return;
+        Player player = resolvePlayer(event.getPlayer());
+        if (player != null && hasBypass(player)) return;
 
         WrapperPlayServerDeclareCommands wrapper = new WrapperPlayServerDeclareCommands(event);
         List<Node> nodes = wrapper.getNodes();
@@ -95,13 +92,13 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
 
         if (!changed) return;
         root.setChildren(filtered);
+        wrapper.setNodes(nodes);
         event.markForReEncode(true);
     }
 
     private void filterTabCompleteResponse(PacketSendEvent event) {
-        Player player = (Player) event.getPlayer();
-        if (player == null) return;
-        if (hasBypass(player)) return;
+        Player player = resolvePlayer(event.getPlayer());
+        if (player != null && hasBypass(player)) return;
 
         WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
         List<WrapperPlayServerTabComplete.CommandMatch> matches = wrapper.getCommandMatches();
@@ -123,6 +120,11 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
             wrapper.setCommandMatches(filtered);
             event.markForReEncode(true);
         }
+    }
+
+    private Player resolvePlayer(Object raw) {
+        if (raw instanceof Player) return (Player) raw;
+        return null;
     }
 
     private boolean hasBypass(Player player) {
