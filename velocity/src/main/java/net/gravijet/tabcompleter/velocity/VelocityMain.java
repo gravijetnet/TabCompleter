@@ -13,7 +13,6 @@ import io.github.retrooper.packetevents.velocity.factory.VelocityPacketEventsBui
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.velocity.command.TabCompleterCommand;
-import net.gravijet.tabcompleter.velocity.listeners.VelocityAvailableCommandsListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityCommandListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityTabPacketListener;
 import org.slf4j.Logger;
@@ -117,7 +116,6 @@ public class VelocityMain {
         }
 
         server.getEventManager().register(this, new VelocityCommandListener(this));
-        server.getEventManager().register(this, new VelocityAvailableCommandsListener(this));
 
         tabPacketListener = new VelocityTabPacketListener(this);
         PacketEvents.getAPI().getEventManager().registerListener(tabPacketListener);
