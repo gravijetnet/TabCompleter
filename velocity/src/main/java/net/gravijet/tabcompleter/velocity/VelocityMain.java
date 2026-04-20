@@ -1,20 +1,17 @@
 package net.gravijet.tabcompleter.velocity;
 
-import com.github.retrooper.packetevents.PacketEvents;
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
-import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
-import io.github.retrooper.packetevents.velocity.factory.VelocityPacketEventsBuilder;
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.velocity.command.TabCompleterCommand;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityCommandListener;
-import net.gravijet.tabcompleter.velocity.listeners.VelocityTabPacketListener;
+import net.gravijet.tabcompleter.velocity.listeners.VelocityNativeListener;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -36,28 +33,18 @@ public class VelocityMain {
     private final ProxyServer server;
     private final Logger logger;
     private final Path dataDirectory;
-    private final PluginContainer container;
     private PluginConfig pluginConfig;
-    private VelocityTabPacketListener tabPacketListener;
 
     @Inject
-    public VelocityMain(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory, PluginContainer container) {
+    public VelocityMain(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server        = server;
         this.logger        = logger;
         this.dataDirectory = dataDirectory;
-        this.container     = container;
         instance = this;
     }
 
     @Subscribe
     public void onProxyInitialize(ProxyInitializeEvent event) {
-        PacketEvents.setAPI(VelocityPacketEventsBuilder.build(server, container, logger, dataDirectory));
-        PacketEvents.getAPI().getSettings()
-                .reEncodeByDefault(false)
-                .checkForUpdates(false);
-        PacketEvents.getAPI().load();
-        PacketEvents.getAPI().init();
-
         saveDefaultConfig();
         loadConfiguration();
         registerListeners();
@@ -74,9 +61,6 @@ public class VelocityMain {
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
-        if (PacketEvents.getAPI() != null) {
-            PacketEvents.getAPI().terminate();
-        }
         logger.info("TabCompleter disabled.");
     }
 
@@ -111,14 +95,8 @@ public class VelocityMain {
 
     private void registerListeners() {
         server.getEventManager().unregisterListeners(this);
-        if (tabPacketListener != null) {
-            PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
-        }
-
         server.getEventManager().register(this, new VelocityCommandListener(this));
-
-        tabPacketListener = new VelocityTabPacketListener(this);
-        PacketEvents.getAPI().getEventManager().registerListener(tabPacketListener);
+        server.getEventManager().register(this, new VelocityNativeListener(this));
     }
 
     public static VelocityMain getInstance()  { return instance; }
