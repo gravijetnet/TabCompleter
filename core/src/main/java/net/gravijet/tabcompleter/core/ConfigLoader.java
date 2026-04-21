@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,9 +37,32 @@ public final class ConfigLoader {
         String reloadPerm  = str(data, "reload-permission",  "tabcompleter.reload");
         String noPermMsg   = str(data, "no-permission-message", "&cThis command does not exist.");
         List<String> blockedCmds = strList(data, "blocked-commands");
-        String spigotMode  = str(data, "mode", "allowlist");
+        String spigotMode  = str(data, "mode", "blocklist");
+        Map<String, GroupConfig> groups = parseGroups(data);
 
-        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, blockedCmds, spigotMode);
+        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, blockedCmds, spigotMode, groups);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, GroupConfig> parseGroups(Map<String, Object> data) {
+        Object raw = data.get("groups");
+        if (!(raw instanceof Map)) return Collections.emptyMap();
+
+        Map<?, ?> groupsMap = (Map<?, ?>) raw;
+        Map<String, GroupConfig> result = new LinkedHashMap<>();
+
+        for (Map.Entry<?, ?> entry : groupsMap.entrySet()) {
+            String name = String.valueOf(entry.getKey());
+            if (!(entry.getValue() instanceof Map)) continue;
+
+            Map<String, Object> groupData = (Map<String, Object>) entry.getValue();
+            String permission = str(groupData, "permission", "tabcompleter.group." + name);
+            List<String> commands = strList(groupData, "commands");
+            List<String> inherits = strList(groupData, "inherits");
+
+            result.put(name, new GroupConfig(name, permission, commands, inherits));
+        }
+        return result;
     }
 
     private static String str(Map<String, Object> data, String key, String def) {

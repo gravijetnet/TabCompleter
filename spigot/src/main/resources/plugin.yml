@@ -12,7 +12,7 @@ commands:
 
 permissions:
   tabcompleter.admin:
-    description: Reload the plugin configuration
+    description: Access to the /tabcompleter management command
     default: op
   tabcompleter.bypass:
     description: Bypass all tab-completion and command restrictions
@@ -20,12 +20,12 @@ permissions:
   tabcompleter.reload:
     description: Reload the plugin configuration
     default: op
-  tabcompleter.mod:
-    description: Access to mod-group commands
+  tabcompleter.group.default:
+    description: Access to default group commands (configure in config.yml)
     default: false
-  tabcompleter.sup:
-    description: Access to support-group commands
+  tabcompleter.group.mod:
+    description: Access to mod group commands (configure in config.yml)
     default: false
-  tabcompleter.builder:
-    description: Access to builder-group commands
+  tabcompleter.group.admin:
+    description: Access to admin group commands (configure in config.yml)
     default: false

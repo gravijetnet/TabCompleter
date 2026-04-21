@@ -40,10 +40,12 @@ public class VelocityNativeListener {
 
     @Subscribe
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
-        if (hasBypass(event.getPlayer())) return;
+        Player player = event.getPlayer();
+        if (hasBypass(player)) return;
         if (CHILDREN_FIELD == null) return;
 
         try {
+            @SuppressWarnings("unchecked")
             RootCommandNode<CommandSource> root = (RootCommandNode<CommandSource>) event.getRootNode();
 
             @SuppressWarnings("unchecked")
@@ -53,22 +55,23 @@ public class VelocityNativeListener {
             Map<String, ?> literals = (Map<String, ?>) LITERALS_FIELD.get(root);
 
             children.keySet().removeIf(name ->
-                    CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase()));
+                    !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission));
             literals.keySet().removeIf(name ->
-                    CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase()));
-        } catch (ReflectiveOperationException e) {
-            plugin.getLogger().warn("Could not filter declare-commands: {}", e.getMessage());
+                    !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission));
+        } catch (Exception e) {
+            plugin.getLogger().warn("Could not filter available commands: {}", e.getMessage());
         }
     }
 
     @Subscribe
     public void onTabComplete(TabCompleteEvent event) {
-        if (hasBypass(event.getPlayer())) return;
+        Player player = event.getPlayer();
+        if (hasBypass(player)) return;
 
         event.getSuggestions().removeIf(text -> {
             String name = text.startsWith("/") ? text.substring(1) : text;
             if (name.contains(" ")) return false;
-            return CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase());
+            return !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission);
         });
     }
 
