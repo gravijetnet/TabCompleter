@@ -1,14 +1,75 @@
 package net.gravijet.tabcompleter.core;
 
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
+
 public final class CommandFilter {
 
     private CommandFilter() {}
 
+    /**
+     * Returns true if the command is visible/allowed for a player.
+     * If groups are configured and the player has at least one group permission,
+     * only commands in their groups (including inherited) are allowed.
+     * Otherwise falls back to mode/blocked-commands logic.
+     */
+    public static boolean isCommandVisibleToPlayer(PluginConfig config, String cmd, Predicate<String> hasPermission) {
+        if (!config.getGroups().isEmpty()) {
+            boolean hasAnyGroup = false;
+            for (GroupConfig g : config.getGroups().values()) {
+                if (hasPermission.test(g.getPermission())) {
+                    hasAnyGroup = true;
+                    break;
+                }
+            }
+            if (hasAnyGroup) {
+                Set<String> allowed = collectAllowedCommands(config, hasPermission);
+                return isCommandInSet(allowed, cmd.toLowerCase());
+            }
+        }
+        return !isCommandFiltered(config, cmd);
+    }
+
+    private static Set<String> collectAllowedCommands(PluginConfig config, Predicate<String> hasPermission) {
+        Set<String> result = new HashSet<>();
+        Set<String> visited = new HashSet<>();
+        for (GroupConfig group : config.getGroups().values()) {
+            if (hasPermission.test(group.getPermission())) {
+                collectGroupCommands(config, group, result, visited);
+            }
+        }
+        return result;
+    }
+
+    private static void collectGroupCommands(PluginConfig config, GroupConfig group, Set<String> result, Set<String> visited) {
+        if (!visited.add(group.getName())) return;
+        for (String cmd : group.getCommands()) {
+            result.add(cmd.toLowerCase());
+        }
+        for (String inheritName : group.getInherits()) {
+            GroupConfig inherited = config.getGroups().get(inheritName);
+            if (inherited != null) {
+                collectGroupCommands(config, inherited, result, visited);
+            }
+        }
+    }
+
+    private static boolean isCommandInSet(Set<String> set, String cmd) {
+        if (set.contains(cmd)) return true;
+        if (cmd.contains(":")) {
+            String[] parts = cmd.split(":", 2);
+            return set.contains(parts[0]) || set.contains(parts[1]);
+        }
+        return false;
+    }
+
+    /** Legacy: Returns true if the command should be blocked (pure blocklist check). */
     public static boolean isCommandBlocked(PluginConfig config, String cmd) {
         String lower = cmd.toLowerCase();
         for (String blocked : config.getBlockedCommands()) {
             if (blocked.equalsIgnoreCase(lower)) return true;
-            // block "plugin:command" if "plugin" or "command" is blocked (e.g. velocity:callback blocked via velocity)
             if (lower.contains(":")) {
                 String[] parts = lower.split(":", 2);
                 if (blocked.equalsIgnoreCase(parts[0]) || blocked.equalsIgnoreCase(parts[1])) return true;
@@ -17,7 +78,7 @@ public final class CommandFilter {
         return false;
     }
 
-    /** Returns true if the command should be hidden/blocked for this player (Spigot only). */
+    /** Legacy: Returns true if the command should be hidden/blocked (respects mode). */
     public static boolean isCommandFiltered(PluginConfig config, String cmd) {
         boolean inList = isCommandBlocked(config, cmd);
         return "blocklist".equalsIgnoreCase(config.getSpigotMode()) ? inList : !inList;

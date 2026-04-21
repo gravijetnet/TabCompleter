@@ -37,7 +37,7 @@ public class BungeeChatListener implements Listener {
 
         String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
 
-        if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
+        if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
 
         event.setCancelled(true);
         if (sendMessage) {

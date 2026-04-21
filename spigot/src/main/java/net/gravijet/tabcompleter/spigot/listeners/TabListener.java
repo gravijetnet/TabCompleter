@@ -49,7 +49,7 @@ public class TabListener implements Listener {
         if (message == null || !message.startsWith("/")) return;
 
         String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
-        if (!CommandFilter.isCommandFiltered(plugin.getPluginConfig(), cmd)) return;
+        if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
 
         event.setCancelled(true);
         if (sendMessage) {
@@ -60,12 +60,15 @@ public class TabListener implements Listener {
     }
 
     private void cancelIfUnknown(PlayerCommandPreprocessEvent event) {
+        Player player = event.getPlayer();
+        if (hasBypass(player)) return;
+
         String message = event.getMessage();
         if (message == null || !message.startsWith("/")) return;
         String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
         if (commandMap != null && commandMap.getCommand(cmd) == null) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(
+            player.sendMessage(
                     SpigotMain.color(plugin.getPluginConfig().getPrefix())
                     + SpigotMain.color(plugin.getPluginConfig().getNoPermissionMessage()));
         }

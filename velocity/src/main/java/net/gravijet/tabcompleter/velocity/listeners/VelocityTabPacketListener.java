@@ -30,7 +30,8 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
         if (event.getPacketType() != PacketType.Play.Client.TAB_COMPLETE) return;
 
         Player player = resolvePlayer(event.getPlayer());
-        if (player != null && hasBypass(player)) return;
+        if (player == null) return;
+        if (hasBypass(player)) return;
 
         WrapperPlayClientTabComplete clientPacket = new WrapperPlayClientTabComplete(event);
         String text = clientPacket.getText();
@@ -40,14 +41,13 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
+            if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.setCancelled(true);
             }
             return;
         }
 
-        // no space: cancel only if the exact typed command is blocked
-        if (!afterSlash.isEmpty() && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), afterSlash.toLowerCase())) {
+        if (!afterSlash.isEmpty() && !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), afterSlash.toLowerCase(), player::hasPermission)) {
             event.setCancelled(true);
         }
     }
@@ -63,62 +63,72 @@ public class VelocityTabPacketListener extends PacketListenerAbstract {
 
     private void filterDeclareCommands(PacketSendEvent event) {
         Player player = resolvePlayer(event.getPlayer());
-        if (player != null && hasBypass(player)) return;
+        if (player == null) return;
+        if (hasBypass(player)) return;
 
-        WrapperPlayServerDeclareCommands wrapper = new WrapperPlayServerDeclareCommands(event);
-        List<Node> nodes = wrapper.getNodes();
-        int rootIdx = wrapper.getRootIndex();
+        try {
+            WrapperPlayServerDeclareCommands wrapper = new WrapperPlayServerDeclareCommands(event);
+            List<Node> nodes = wrapper.getNodes();
+            int rootIdx = wrapper.getRootIndex();
 
-        if (rootIdx < 0 || rootIdx >= nodes.size()) return;
+            if (rootIdx < 0 || rootIdx >= nodes.size()) return;
 
-        Node root = nodes.get(rootIdx);
-        List<Integer> children = root.getChildren();
-        if (children == null || children.isEmpty()) return;
+            Node root = nodes.get(rootIdx);
+            List<Integer> children = root.getChildren();
+            if (children == null || children.isEmpty()) return;
 
-        List<Integer> filtered = new ArrayList<>();
-        boolean changed = false;
-        for (int idx : children) {
-            if (idx < 0 || idx >= nodes.size()) { filtered.add(idx); continue; }
-            Node child = nodes.get(idx);
-            if ((child.getFlags() & Node.TYPE_MASK) != Node.TYPE_LITERAL) { filtered.add(idx); continue; }
-            String name = child.getName().orElse(null);
-            if (name == null) { filtered.add(idx); continue; }
-            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase())) {
-                changed = true;
-            } else {
-                filtered.add(idx);
+            List<Integer> filtered = new ArrayList<>();
+            boolean changed = false;
+            for (int idx : children) {
+                if (idx < 0 || idx >= nodes.size()) { filtered.add(idx); continue; }
+                Node child = nodes.get(idx);
+                if ((child.getFlags() & Node.TYPE_MASK) != Node.TYPE_LITERAL) { filtered.add(idx); continue; }
+                String name = child.getName().orElse(null);
+                if (name == null) { filtered.add(idx); continue; }
+                if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)) {
+                    changed = true;
+                } else {
+                    filtered.add(idx);
+                }
             }
-        }
 
-        if (!changed) return;
-        root.setChildren(filtered);
-        wrapper.setNodes(nodes);
-        event.markForReEncode(true);
+            if (!changed) return;
+            root.setChildren(filtered);
+            wrapper.setNodes(nodes);
+            event.markForReEncode(true);
+        } catch (Exception e) {
+            plugin.getLogger().warn("Error filtering DECLARE_COMMANDS: {}", e.getMessage());
+        }
     }
 
     private void filterTabCompleteResponse(PacketSendEvent event) {
         Player player = resolvePlayer(event.getPlayer());
-        if (player != null && hasBypass(player)) return;
+        if (player == null) return;
+        if (hasBypass(player)) return;
 
-        WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
-        List<WrapperPlayServerTabComplete.CommandMatch> matches = wrapper.getCommandMatches();
-        if (matches == null || matches.isEmpty()) return;
+        try {
+            WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
+            List<WrapperPlayServerTabComplete.CommandMatch> matches = wrapper.getCommandMatches();
+            if (matches == null || matches.isEmpty()) return;
 
-        List<WrapperPlayServerTabComplete.CommandMatch> filtered = new ArrayList<>();
-        boolean changed = false;
-        for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
-            String text = match.getText();
-            String name = text.startsWith("/") ? text.substring(1) : text;
-            if (!name.contains(" ") && CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name)) {
-                changed = true;
-            } else {
-                filtered.add(match);
+            List<WrapperPlayServerTabComplete.CommandMatch> filtered = new ArrayList<>();
+            boolean changed = false;
+            for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
+                String text = match.getText();
+                String name = text.startsWith("/") ? text.substring(1) : text;
+                if (!name.contains(" ") && !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name, player::hasPermission)) {
+                    changed = true;
+                } else {
+                    filtered.add(match);
+                }
             }
-        }
 
-        if (changed) {
-            wrapper.setCommandMatches(filtered);
-            event.markForReEncode(true);
+            if (changed) {
+                wrapper.setCommandMatches(filtered);
+                event.markForReEncode(true);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warn("Error filtering TAB_COMPLETE response: {}", e.getMessage());
         }
     }
 

@@ -2,6 +2,7 @@ package net.gravijet.tabcompleter.core;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public final class PluginConfig {
 
@@ -11,19 +12,22 @@ public final class PluginConfig {
     private final String noPermissionMessage;
     private final List<String> blockedCommands;
     private final String spigotMode;
+    private final Map<String, GroupConfig> groups;
 
     public PluginConfig(String prefix,
                         String bypassPermission,
                         String reloadPermission,
                         String noPermissionMessage,
                         List<String> blockedCommands,
-                        String spigotMode) {
+                        String spigotMode,
+                        Map<String, GroupConfig> groups) {
         this.prefix              = prefix;
         this.bypassPermission    = bypassPermission;
         this.reloadPermission    = reloadPermission;
         this.noPermissionMessage = noPermissionMessage;
         this.blockedCommands     = Collections.unmodifiableList(blockedCommands);
         this.spigotMode          = spigotMode;
+        this.groups              = Collections.unmodifiableMap(groups);
     }
 
     public String getPrefix()                    { return prefix; }
@@ -32,4 +36,5 @@ public final class PluginConfig {
     public String getNoPermissionMessage()       { return noPermissionMessage; }
     public List<String> getBlockedCommands()     { return blockedCommands; }
     public String getSpigotMode()                { return spigotMode; }
+    public Map<String, GroupConfig> getGroups()  { return groups; }
 }

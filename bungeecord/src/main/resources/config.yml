@@ -6,10 +6,43 @@ bypass-permission: tabcompleter.bypass
 reload-permission: tabcompleter.reload
 no-permission-message: "&cThis command does not exist."
 
-# Commands blocked from tab-completion and execution for all players.
-# Players with bypass-permission (or * permission) are never affected.
-blocked-commands:
-  - op
-  - deop
-  - stop
-  - reload
+# allowlist: only the listed commands are visible/usable for players without any group permission.
+# blocklist: only the listed commands are hidden/blocked for players without any group permission.
+# This setting is ignored for players who have a group permission (see 'groups' below).
+mode: blocklist
+
+# Commands blocked/allowed for players who have no group permission.
+# With mode: blocklist and an empty list, all commands are accessible by default.
+blocked-commands: []
+
+# Groups control which commands each role can tab-complete and execute.
+# Players need the group's permission to access its commands.
+# Default permission format: tabcompleter.group.<groupname>
+# Use 'inherits' to extend another group without duplicating commands.
+#
+# Example:
+# groups:
+#   default:
+#     permission: tabcompleter.group.default
+#     commands:
+#       - help
+#       - list
+#       - w
+#   mod:
+#     permission: tabcompleter.group.mod
+#     inherits:
+#       - default
+#     commands:
+#       - kick
+#       - mute
+#   admin:
+#     permission: tabcompleter.group.admin
+#     inherits:
+#       - mod
+#     commands:
+#       - ban
+#       - op
+#       - deop
+#       - stop
+#       - reload
+groups: {}

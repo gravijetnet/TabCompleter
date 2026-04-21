@@ -39,13 +39,13 @@ public class TabPacketListener extends PacketListenerAbstract {
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            if (CommandFilter.isCommandFiltered(plugin.getPluginConfig(), baseCmd)) {
+            if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.setCancelled(true);
             }
             return;
         }
 
-        if (!afterSlash.isEmpty() && CommandFilter.isCommandFiltered(plugin.getPluginConfig(), afterSlash.toLowerCase())) {
+        if (!afterSlash.isEmpty() && !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), afterSlash.toLowerCase(), player::hasPermission)) {
             event.setCancelled(true);
         }
     }
@@ -67,7 +67,7 @@ public class TabPacketListener extends PacketListenerAbstract {
         for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
             String text = match.getText();
             String name = text.startsWith("/") ? text.substring(1) : text;
-            if (!name.contains(" ") && CommandFilter.isCommandFiltered(plugin.getPluginConfig(), name)) {
+            if (!name.contains(" ") && !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name, player::hasPermission)) {
                 changed = true;
             } else {
                 filtered.add(match);
