@@ -1,7 +1,7 @@
 package net.gravijet.tabcompleter.core;
 
 import java.util.HashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -79,9 +79,26 @@ public final class CommandFilter {
         return false;
     }
 
-    /** Legacy: Returns true if the command should be hidden/blocked (respects mode). */
+    /**
+     * Checks if a command is in an allowlist using exact match or namespace-prefix match.
+     * Whitelisting "friend" does NOT allow "phoenix:friend" (no suffix match).
+     * Whitelisting "essentials" DOES allow "essentials:friend" (namespace prefix).
+     */
+    private static boolean isCommandInAllowList(List<String> list, String cmd) {
+        String lower = cmd.toLowerCase();
+        for (String entry : list) {
+            if (entry.equalsIgnoreCase(lower)) return true;
+            if (lower.contains(":") && entry.equalsIgnoreCase(lower.split(":", 2)[0])) return true;
+        }
+        return false;
+    }
+
+    /** Returns true if the command should be hidden/blocked (respects mode). */
     public static boolean isCommandFiltered(PluginConfig config, String cmd) {
-        boolean inList = isCommandBlocked(config, cmd);
-        return "blocklist".equalsIgnoreCase(config.getSpigotMode()) ? inList : !inList;
+        if ("blocklist".equalsIgnoreCase(config.getSpigotMode())) {
+            return isCommandBlocked(config, cmd);
+        }
+        // Allowlist mode: only exact or namespace-prefix match — no suffix match.
+        return !isCommandInAllowList(config.getBlockedCommands(), cmd);
     }
 }

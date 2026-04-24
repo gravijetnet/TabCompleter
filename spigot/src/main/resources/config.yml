@@ -1,4 +1,4 @@
-# TabCompleter Configuration
+# TabCompleter Configuration (Spigot)
 # Color codes: https://htmlcolorcodes.com/minecraft-color-codes/
 
 prefix: ""
@@ -6,14 +6,16 @@ bypass-permission: tabcompleter.bypass
 reload-permission: tabcompleter.reload
 no-permission-message: "&cThis command does not exist."
 
-# allowlist: only the listed commands are visible/usable for players without any group permission.
-# blocklist: only the listed commands are hidden/blocked for players without any group permission.
-# This setting is ignored for players who have a group permission (see 'groups' below).
-mode: blocklist
+# allowlist: only the listed commands are visible/usable for players without a group permission.
+# blocklist: only the listed commands are hidden/blocked for players without a group permission.
+# Default is allowlist — with an empty allowed-commands list, ungrouped players see nothing.
+mode: allowlist
 
-# Commands blocked/allowed for players who have no group permission.
-# With mode: blocklist and an empty list, all commands are accessible by default.
-blocked-commands: []
+# Commands allowed for players who have no group permission (allowlist mode).
+# In blocklist mode this list acts as the blocklist instead.
+# Note: listing "friend" allows ONLY "/friend", NOT "/phoenix:friend".
+#       To allow all commands of a plugin namespace, list the namespace (e.g. "essentials").
+allowed-commands: []
 
 # Groups control which commands each role can tab-complete and execute.
 # Players need the group's permission to access its commands.

@@ -1,6 +1,5 @@
 package net.gravijet.tabcompleter.velocity.listeners;
 
-import com.velocitypowered.api.event.ResultedEvent;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.command.CommandExecuteEvent;
 import com.velocitypowered.api.proxy.Player;
@@ -24,7 +23,7 @@ public class VelocityCommandListener {
         if (hasBypass(player)) return;
 
         String cmd = event.getCommand().split(" ", 2)[0].toLowerCase();
-        if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
+        if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
 
         event.setResult(CommandExecuteEvent.CommandResult.denied());
         player.sendMessage(LegacyComponentSerializer.legacyAmpersand()

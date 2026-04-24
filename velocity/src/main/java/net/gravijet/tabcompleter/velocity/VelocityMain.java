@@ -80,24 +80,16 @@ public class VelocityMain {
 
     public void loadConfiguration() {
         try {
-            pluginConfig = ConfigLoader.load(dataDirectory.resolve("config.yml").toFile());
+            pluginConfig = ConfigLoader.loadProxy(dataDirectory.resolve("config.yml").toFile());
         } catch (IOException e) {
             logger.error("Failed to load config.yml: {}", e.getMessage());
             try (InputStream in = getClass().getResourceAsStream("/config.yml")) {
                 if (in != null) {
-                    pluginConfig = ConfigLoader.loadFromStream(in);
+                    pluginConfig = ConfigLoader.loadProxyFromStream(in);
                 }
             } catch (IOException ex) {
                 throw new RuntimeException("Cannot load config", ex);
             }
-        }
-
-        if (pluginConfig != null && !"blocklist".equalsIgnoreCase(pluginConfig.getSpigotMode())) {
-            logger.warn("allowlist mode is not supported on proxy; using blocklist instead");
-            pluginConfig = new PluginConfig(
-                    pluginConfig.getPrefix(), pluginConfig.getBypassPermission(),
-                    pluginConfig.getReloadPermission(), pluginConfig.getNoPermissionMessage(),
-                    pluginConfig.getBlockedCommands(), "blocklist", pluginConfig.getGroups());
         }
     }
 
