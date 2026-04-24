@@ -68,11 +68,25 @@ public class VelocityNativeListener {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
 
-        event.getSuggestions().removeIf(text -> {
-            String name = text.startsWith("/") ? text.substring(1) : text;
-            if (name.contains(" ")) return false;
-            return !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission);
-        });
+        String partial = event.getPartialMessage();
+        if (partial == null) return;
+
+        String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
+        if (afterSlash.isEmpty()) return;
+
+        if (afterSlash.contains(" ")) {
+            // Argument completion — block if base command is not visible.
+            String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+            if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
+                event.getSuggestions().clear();
+            }
+        } else {
+            // Command name completion — filter returned suggestions individually.
+            event.getSuggestions().removeIf(text -> {
+                String name = text.startsWith("/") ? text.substring(1) : text;
+                return !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission);
+            });
+        }
     }
 
     private boolean hasBypass(Player player) {

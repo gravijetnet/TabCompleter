@@ -42,12 +42,8 @@ public class TabPacketListener extends PacketListenerAbstract {
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.setCancelled(true);
             }
-            return;
         }
-
-        if (!afterSlash.isEmpty() && !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), afterSlash.toLowerCase(), player::hasPermission)) {
-            event.setCancelled(true);
-        }
+        // No-space case: partial command name — let through and rely on response filtering.
     }
 
     @Override
