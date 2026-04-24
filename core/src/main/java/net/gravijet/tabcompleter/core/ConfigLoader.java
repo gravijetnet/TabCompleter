@@ -16,31 +16,63 @@ public final class ConfigLoader {
 
     private ConfigLoader() {}
 
+    /** Load for Spigot: mode defaults to "allowlist", reads allowed-commands, supports groups. */
     public static PluginConfig load(File file) throws IOException {
         try (InputStream in = new FileInputStream(file)) {
-            return loadFromStream(in);
+            return loadInternal(in, false);
         }
     }
 
-    @SuppressWarnings("unchecked")
+    /** Load for Spigot from stream. */
     public static PluginConfig loadFromStream(InputStream in) {
-        Yaml yaml = new Yaml();
-        Object raw = yaml.load(in);
-        Map<String, Object> data = (raw instanceof Map) ? (Map<String, Object>) raw : Collections.<String, Object>emptyMap();
-        return parse(data);
+        return loadInternal(in, false);
+    }
+
+    /** Load for proxy (BungeeCord/Velocity): always blocklist, reads blocked-commands, no groups. */
+    public static PluginConfig loadProxy(File file) throws IOException {
+        try (InputStream in = new FileInputStream(file)) {
+            return loadInternal(in, true);
+        }
+    }
+
+    /** Load for proxy from stream. */
+    public static PluginConfig loadProxyFromStream(InputStream in) {
+        return loadInternal(in, true);
     }
 
     @SuppressWarnings("unchecked")
-    private static PluginConfig parse(Map<String, Object> data) {
-        String prefix      = str(data, "prefix", "");
-        String bypassPerm  = str(data, "bypass-permission", "tabcompleter.bypass");
-        String reloadPerm  = str(data, "reload-permission",  "tabcompleter.reload");
-        String noPermMsg   = str(data, "no-permission-message", "&cThis command does not exist.");
-        List<String> blockedCmds = strList(data, "blocked-commands");
-        String spigotMode  = str(data, "mode", "blocklist");
-        Map<String, GroupConfig> groups = parseGroups(data);
+    private static PluginConfig loadInternal(InputStream in, boolean isProxy) {
+        Yaml yaml = new Yaml();
+        Object raw = yaml.load(in);
+        Map<String, Object> data = (raw instanceof Map) ? (Map<String, Object>) raw : Collections.<String, Object>emptyMap();
+        return parse(data, isProxy);
+    }
 
-        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, blockedCmds, spigotMode, groups);
+    @SuppressWarnings("unchecked")
+    private static PluginConfig parse(Map<String, Object> data, boolean isProxy) {
+        String prefix     = str(data, "prefix", "");
+        String bypassPerm = str(data, "bypass-permission", "tabcompleter.bypass");
+        String reloadPerm = str(data, "reload-permission",  "tabcompleter.reload");
+        String noPermMsg  = str(data, "no-permission-message", "&cThis command does not exist.");
+
+        String mode;
+        List<String> cmds;
+        Map<String, GroupConfig> groups;
+
+        if (isProxy) {
+            // Proxy always runs in blocklist mode; groups are not supported.
+            mode   = "blocklist";
+            cmds   = strList(data, "blocked-commands");
+            groups = Collections.emptyMap();
+        } else {
+            mode = str(data, "mode", "allowlist");
+            // Prefer allowed-commands (allowlist mode); fall back to blocked-commands for compat.
+            cmds = strList(data, "allowed-commands");
+            if (cmds.isEmpty()) cmds = strList(data, "blocked-commands");
+            groups = parseGroups(data);
+        }
+
+        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, cmds, mode, groups);
     }
 
     @SuppressWarnings("unchecked")

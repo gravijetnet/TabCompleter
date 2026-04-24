@@ -45,22 +45,14 @@ public class BungeeMain extends Plugin {
 
     public void loadConfiguration() {
         try {
-            pluginConfig = ConfigLoader.load(new File(getDataFolder(), "config.yml"));
+            pluginConfig = ConfigLoader.loadProxy(new File(getDataFolder(), "config.yml"));
         } catch (IOException e) {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
             try (InputStream in = getResourceAsStream("config.yml")) {
-                if (in != null) pluginConfig = ConfigLoader.loadFromStream(in);
+                if (in != null) pluginConfig = ConfigLoader.loadProxyFromStream(in);
             } catch (IOException ex) {
                 throw new RuntimeException("Cannot load config", ex);
             }
-        }
-
-        if (pluginConfig != null && !"blocklist".equalsIgnoreCase(pluginConfig.getSpigotMode())) {
-            getLogger().warning("allowlist mode is not supported on proxy; using blocklist instead");
-            pluginConfig = new PluginConfig(
-                    pluginConfig.getPrefix(), pluginConfig.getBypassPermission(),
-                    pluginConfig.getReloadPermission(), pluginConfig.getNoPermissionMessage(),
-                    pluginConfig.getBlockedCommands(), "blocklist", pluginConfig.getGroups());
         }
     }
 
