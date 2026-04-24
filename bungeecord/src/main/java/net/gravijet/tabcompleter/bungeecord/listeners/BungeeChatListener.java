@@ -4,6 +4,7 @@ import net.gravijet.tabcompleter.bungeecord.BungeeMain;
 import net.gravijet.tabcompleter.core.CommandFilter;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.event.ChatEvent;
+import net.md_5.bungee.api.event.TabCompleteEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
 import net.md_5.bungee.event.EventPriority;
@@ -44,6 +45,25 @@ public class BungeeChatListener implements Listener {
             player.sendMessage(
                     BungeeMain.color(plugin.getPluginConfig().getPrefix())
                     + BungeeMain.color(plugin.getPluginConfig().getNoPermissionMessage()));
+        }
+    }
+
+    @EventHandler
+    public void onTabComplete(TabCompleteEvent event) {
+        if (!(event.getSender() instanceof ProxiedPlayer)) return;
+
+        ProxiedPlayer player = (ProxiedPlayer) event.getSender();
+        if (hasBypass(player)) return;
+
+        String cursor = event.getCursor();
+        if (cursor == null || !cursor.startsWith("/")) return;
+
+        String afterSlash = cursor.substring(1);
+        if (!afterSlash.contains(" ")) return; // partial command name — can't filter here
+
+        String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+        if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
+            event.setCancelled(true);
         }
     }
 

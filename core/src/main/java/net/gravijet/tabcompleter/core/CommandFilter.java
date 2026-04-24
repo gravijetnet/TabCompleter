@@ -59,8 +59,9 @@ public final class CommandFilter {
     private static boolean isCommandInSet(Set<String> set, String cmd) {
         if (set.contains(cmd)) return true;
         if (cmd.contains(":")) {
-            String[] parts = cmd.split(":", 2);
-            return set.contains(parts[0]) || set.contains(parts[1]);
+            // Only match by namespace prefix (e.g. "phoenix" allows "phoenix:friend"),
+            // never by suffix — so whitelisting "friend" does NOT allow "phoenix:friend".
+            return set.contains(cmd.split(":", 2)[0]);
         }
         return false;
     }

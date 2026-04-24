@@ -1,10 +1,7 @@
 package net.gravijet.tabcompleter.bungeecord;
 
-import com.github.retrooper.packetevents.PacketEvents;
-import io.github.retrooper.packetevents.bungee.factory.BungeePacketEventsBuilder;
 import net.gravijet.tabcompleter.bungeecord.command.TabCompleterCommand;
 import net.gravijet.tabcompleter.bungeecord.listeners.BungeeChatListener;
-import net.gravijet.tabcompleter.bungeecord.listeners.BungeeTabPacketListener;
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.md_5.bungee.api.ChatColor;
@@ -19,32 +16,18 @@ public class BungeeMain extends Plugin {
 
     private static BungeeMain instance;
     private PluginConfig pluginConfig;
-    private BungeeTabPacketListener tabPacketListener;
-
-    @Override
-    public void onLoad() {
-        PacketEvents.setAPI(BungeePacketEventsBuilder.build(this));
-        PacketEvents.getAPI().getSettings()
-                .reEncodeByDefault(false)
-                .checkForUpdates(false);
-        PacketEvents.getAPI().load();
-    }
 
     @Override
     public void onEnable() {
         instance = this;
         saveDefaultConfig();
         loadConfiguration();
-        PacketEvents.getAPI().init();
         registerListeners();
         getLogger().info("TabCompleter v" + getDescription().getVersion() + " enabled.");
     }
 
     @Override
     public void onDisable() {
-        if (PacketEvents.getAPI() != null) {
-            PacketEvents.getAPI().terminate();
-        }
         getLogger().info("TabCompleter disabled.");
     }
 
@@ -71,19 +54,19 @@ public class BungeeMain extends Plugin {
                 throw new RuntimeException("Cannot load config", ex);
             }
         }
+
+        if (pluginConfig != null && !"blocklist".equalsIgnoreCase(pluginConfig.getSpigotMode())) {
+            getLogger().warning("allowlist mode is not supported on proxy; using blocklist instead");
+            pluginConfig = new PluginConfig(
+                    pluginConfig.getPrefix(), pluginConfig.getBypassPermission(),
+                    pluginConfig.getReloadPermission(), pluginConfig.getNoPermissionMessage(),
+                    pluginConfig.getBlockedCommands(), "blocklist", pluginConfig.getGroups());
+        }
     }
 
     private void registerListeners() {
         getProxy().getPluginManager().unregisterListeners(this);
-        if (tabPacketListener != null) {
-            PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
-        }
-
         getProxy().getPluginManager().registerListener(this, new BungeeChatListener(this));
-
-        tabPacketListener = new BungeeTabPacketListener(this);
-        PacketEvents.getAPI().getEventManager().registerListener(tabPacketListener);
-
         getProxy().getPluginManager().unregisterCommands(this);
         getProxy().getPluginManager().registerCommand(this, new TabCompleterCommand(this));
     }
