@@ -7,7 +7,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
-import org.bukkit.event.player.PlayerCommandSendEvent;
 
 public class TabListener implements Listener {
 
@@ -15,20 +14,6 @@ public class TabListener implements Listener {
 
     public TabListener(SpigotMain plugin) {
         this.plugin = plugin;
-    }
-
-    /**
-     * Filters the DeclareCommands packet (1.13+): controls which command names
-     * appear in the client's tab-complete list. This is the primary filter for
-     * command-name tab-completion in modern Paper/Spigot.
-     */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onCommandSend(PlayerCommandSendEvent event) {
-        Player player = event.getPlayer();
-        if (hasBypass(player)) return;
-
-        event.getCommands().removeIf(cmd ->
-                !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission));
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
