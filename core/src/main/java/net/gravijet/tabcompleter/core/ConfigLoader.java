@@ -65,8 +65,9 @@ public final class ConfigLoader {
             groups = parseGroups(data);
         } else {
             mode = str(data, "mode", "allowlist");
-            // Prefer allowed-commands (allowlist mode); fall back to blocked-commands for compat.
-            cmds = strList(data, "allowed-commands");
+            // Prefer "commands" (current name); fall back to "allowed-commands" then "blocked-commands" for compat.
+            cmds = strList(data, "commands");
+            if (cmds.isEmpty()) cmds = strList(data, "allowed-commands");
             if (cmds.isEmpty()) cmds = strList(data, "blocked-commands");
             groups = parseGroups(data);
         }

@@ -26,6 +26,13 @@ public final class CommandFilter {
             }
             if (hasAnyGroup) {
                 Set<String> allowed = collectAllowedCommands(config, hasPermission);
+                // Global 'commands' list acts as a base that all players can access,
+                // regardless of which group they are in (allowlist mode only).
+                if ("allowlist".equalsIgnoreCase(config.getSpigotMode())) {
+                    for (String c : config.getBlockedCommands()) {
+                        allowed.add(c.toLowerCase());
+                    }
+                }
                 return isCommandInSet(allowed, cmd.toLowerCase());
             }
         }
@@ -60,10 +67,9 @@ public final class CommandFilter {
         if (set.contains(cmd)) return true;
         if (cmd.contains(":")) {
             String[] parts = cmd.split(":", 2);
-            // "essentials" in set → allows "essentials:friend"
+            // "essentials" in set → allows "essentials:friend" (namespace prefix match only)
+            // "version" does NOT allow "bukkit:version" — use exact name to avoid unwanted aliases
             if (set.contains(parts[0])) return true;
-            // "gamemode" in set → also allows "minecraft:gamemode" (same command, different namespace)
-            if (set.contains(parts[1])) return true;
         }
         return false;
     }

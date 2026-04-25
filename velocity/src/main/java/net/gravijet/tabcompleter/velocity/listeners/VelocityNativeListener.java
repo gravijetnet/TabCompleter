@@ -3,6 +3,7 @@ package net.gravijet.tabcompleter.velocity.listeners;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
 import com.velocitypowered.api.command.CommandSource;
+import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.command.PlayerAvailableCommandsEvent;
 import com.velocitypowered.api.event.player.TabCompleteEvent;
@@ -27,11 +28,11 @@ public class VelocityNativeListener {
         try {
             children = CommandNode.class.getDeclaredField("children");
             children.setAccessible(true);
+        } catch (Exception ignored) {}
+        try {
             literals = CommandNode.class.getDeclaredField("literals");
             literals.setAccessible(true);
-        } catch (NoSuchFieldException | RuntimeException e) {
-            // Brigadier field names changed or module access denied — DeclareCommands filtering unavailable.
-        }
+        } catch (Exception ignored) {}
         CHILDREN_FIELD = children;
         LITERALS_FIELD = literals;
     }
@@ -40,14 +41,14 @@ public class VelocityNativeListener {
         this.plugin = plugin;
     }
 
-    @Subscribe
+    @Subscribe(order = PostOrder.LATE)
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
 
-        if (CHILDREN_FIELD == null || LITERALS_FIELD == null) {
+        if (CHILDREN_FIELD == null) {
             plugin.getLogger().warn("TabCompleter: cannot filter DeclareCommands packet — " +
-                    "Brigadier internal fields are inaccessible. Tab-completion may not be blocked.");
+                    "Brigadier internal fields are inaccessible. Tab-completion blocking unavailable.");
             return;
         }
 
@@ -55,16 +56,31 @@ public class VelocityNativeListener {
             @SuppressWarnings("unchecked")
             RootCommandNode<CommandSource> root = (RootCommandNode<CommandSource>) event.getRootNode();
 
-            @SuppressWarnings("unchecked")
-            Map<String, CommandNode<CommandSource>> children =
-                    (Map<String, CommandNode<CommandSource>>) CHILDREN_FIELD.get(root);
-            @SuppressWarnings("unchecked")
-            Map<String, ?> literals = (Map<String, ?>) LITERALS_FIELD.get(root);
+            // Collect allowed children via public API before clearing
+            List<CommandNode<CommandSource>> toKeep = new ArrayList<>();
+            for (CommandNode<CommandSource> child : root.getChildren()) {
+                String name = child.getName().toLowerCase();
+                if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name, player::hasPermission)) {
+                    toKeep.add(child);
+                }
+            }
 
-            children.keySet().removeIf(name ->
-                    !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission));
-            literals.keySet().removeIf(name ->
-                    !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission));
+            // Clear internal maps via reflection
+            @SuppressWarnings("unchecked")
+            Map<String, ?> childrenMap = (Map<String, ?>) CHILDREN_FIELD.get(root);
+            childrenMap.clear();
+
+            if (LITERALS_FIELD != null) {
+                @SuppressWarnings("unchecked")
+                Map<String, ?> literalsMap = (Map<String, ?>) LITERALS_FIELD.get(root);
+                literalsMap.clear();
+            }
+
+            // Re-add only the allowed children via public API
+            // addChild() populates both children and literals/arguments maps correctly
+            for (CommandNode<CommandSource> child : toKeep) {
+                root.addChild(child);
+            }
         } catch (Exception e) {
             plugin.getLogger().warn("TabCompleter: could not filter available commands: {}", e.getMessage());
         }
@@ -81,7 +97,7 @@ public class VelocityNativeListener {
         String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
 
         if (afterSlash.contains(" ")) {
-            // Argument completion — clear all suggestions if base command is not visible.
+            // Argument completion — clear all suggestions if base command is blocked.
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.getSuggestions().clear();
