@@ -8,32 +8,25 @@ no-permission-message: "&cThis command does not exist."
 
 # allowlist: only the listed commands are visible/usable for players without a group permission.
 # blocklist: only the listed commands are hidden/blocked for players without a group permission.
-# Default is allowlist — with an empty allowed-commands list, ungrouped players see nothing.
+# Default is allowlist — with an empty commands list, ungrouped players see nothing.
 mode: allowlist
 
-# Commands allowed for players who have no group permission (allowlist mode).
+# Base commands accessible to ALL players (including those in groups).
 # In blocklist mode this list acts as the blocklist instead.
-# Note: listing "friend" allows ONLY "/friend", NOT "/phoenix:friend".
+# Note: listing "version" allows ONLY "/version", NOT "/bukkit:version".
 #       To allow all commands of a plugin namespace, list the namespace (e.g. "essentials").
-allowed-commands: []
+commands: []
 
-# Groups control which commands each role can tab-complete and execute.
+# Groups control which additional commands each role can tab-complete and execute.
 # Players need the group's permission to access its commands.
+# Commands listed under 'commands' above are always accessible, regardless of group.
 # Default permission format: tabcompleter.group.<groupname>
 # Use 'inherits' to extend another group without duplicating commands.
 #
 # Example:
 # groups:
-#   default:
-#     permission: tabcompleter.group.default
-#     commands:
-#       - help
-#       - list
-#       - w
 #   mod:
 #     permission: tabcompleter.group.mod
-#     inherits:
-#       - default
 #     commands:
 #       - kick
 #       - mute
