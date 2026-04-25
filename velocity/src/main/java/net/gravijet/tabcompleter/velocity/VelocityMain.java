@@ -12,6 +12,7 @@ import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.velocity.command.TabCompleterCommand;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityCommandListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityNativeListener;
+import net.gravijet.tabcompleter.velocity.listeners.VelocityPacketInjector;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -97,6 +98,7 @@ public class VelocityMain {
         server.getEventManager().unregisterListeners(this);
         server.getEventManager().register(this, new VelocityCommandListener(this));
         server.getEventManager().register(this, new VelocityNativeListener(this));
+        server.getEventManager().register(this, new VelocityPacketInjector(this));
     }
 
     public static VelocityMain getInstance()  { return instance; }

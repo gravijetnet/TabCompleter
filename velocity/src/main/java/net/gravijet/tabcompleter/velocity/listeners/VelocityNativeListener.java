@@ -8,10 +8,14 @@ import com.velocitypowered.api.event.command.PlayerAvailableCommandsEvent;
 import com.velocitypowered.api.event.player.TabCompleteEvent;
 import com.velocitypowered.api.proxy.Player;
 import net.gravijet.tabcompleter.core.CommandFilter;
+import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.velocity.VelocityMain;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public class VelocityNativeListener {
 
@@ -21,42 +25,14 @@ public class VelocityNativeListener {
         this.plugin = plugin;
     }
 
-    /**
-     * Filters the DeclareCommands packet sent to the player.
-     *
-     * root.getChildren() returns a live Map.values() view of Brigadier's internal
-     * children map. Calling clear() on it directly empties that map — no reflection
-     * needed, works on Java 17+ without any --add-opens flags. We then re-add only
-     * the allowed commands via the public addChild() API.
-     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     @Subscribe(order = PostOrder.LAST)
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
-
-        RootCommandNode root = event.getRootNode();
-
-        List<CommandNode> toKeep = new ArrayList<>();
-        for (CommandNode child : (java.util.Collection<CommandNode>) root.getChildren()) {
-            String name = child.getName().toLowerCase();
-            if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name, player::hasPermission)) {
-                toKeep.add(child);
-            }
-        }
-
-        // Live view — clear() empties the underlying map without reflection.
-        root.getChildren().clear();
-
-        for (CommandNode child : toKeep) {
-            root.addChild(child);
-        }
+        filterRoot(event.getRootNode(), player, plugin.getPluginConfig());
     }
 
-    /**
-     * Filters tab-complete suggestions for argument completions and legacy
-     * command-name completions (pre-1.13 clients / non-Brigadier backends).
-     */
     @Subscribe
     public void onTabComplete(TabCompleteEvent event) {
         Player player = event.getPlayer();
@@ -68,13 +44,11 @@ public class VelocityNativeListener {
         String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
 
         if (afterSlash.contains(" ")) {
-            // Argument completion — suppress all suggestions if the base command is blocked.
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.getSuggestions().clear();
             }
         } else {
-            // Command-name completion fallback (legacy clients / legacy backends).
             List<String> filtered = new ArrayList<>();
             for (String text : event.getSuggestions()) {
                 String name = text.startsWith("/") ? text.substring(1) : text;
@@ -87,8 +61,53 @@ public class VelocityNativeListener {
         }
     }
 
-    private boolean hasBypass(Player player) {
+    boolean hasBypass(Player player) {
         String perm = plugin.getPluginConfig().getBypassPermission();
         return player.hasPermission(perm) || player.hasPermission("*");
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared static helpers — used by both this listener and VelocityPacketInjector
+    // -------------------------------------------------------------------------
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void filterRoot(Object rootObj, Player player, PluginConfig config) {
+        if (!(rootObj instanceof RootCommandNode)) return;
+        RootCommandNode root = (RootCommandNode) rootObj;
+
+        List<CommandNode> toKeep = new ArrayList<>();
+        for (Object obj : root.getChildren()) {
+            CommandNode child = (CommandNode) obj;
+            if (CommandFilter.isCommandVisibleToPlayer(config, child.getName().toLowerCase(), player::hasPermission)) {
+                toKeep.add(child);
+            }
+        }
+
+        clearNode(root);
+
+        for (CommandNode child : toKeep) {
+            root.addChild(child);
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void clearNode(RootCommandNode root) {
+        // Strategy 1: public API — root.getChildren() returns Map.values() (live view).
+        // Calling clear() on it clears the underlying LinkedHashMap.
+        try {
+            root.getChildren().clear();
+        } catch (Exception ignored) {}
+
+        // Strategy 2: reflection — clears ALL three internal Brigadier maps.
+        // Needed because some Velocity versions may iterate 'literals' or 'arguments'
+        // directly when serialising the DeclareCommands packet, bypassing getChildren().
+        for (String fieldName : new String[]{"children", "literals", "arguments"}) {
+            try {
+                Field f = CommandNode.class.getDeclaredField(fieldName);
+                f.setAccessible(true);
+                Object val = f.get(root);
+                if (val instanceof Map) ((Map<?, ?>) val).clear();
+            } catch (Exception ignored) {}
+        }
     }
 }
