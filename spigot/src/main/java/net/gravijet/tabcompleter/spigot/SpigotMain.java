@@ -5,12 +5,14 @@ import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.spigot.listeners.CustomTabCompleter;
+import net.gravijet.tabcompleter.spigot.listeners.ModernCommandSendListener;
 import net.gravijet.tabcompleter.spigot.listeners.TabListener;
 import net.gravijet.tabcompleter.spigot.listeners.TabPacketListener;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -22,6 +24,7 @@ public class SpigotMain extends JavaPlugin {
     private PluginConfig pluginConfig;
     private TabListener tabListener;
     private TabPacketListener tabPacketListener;
+    private Listener modernCommandSendListener;
 
     @Override
     public void onLoad() {
@@ -62,6 +65,7 @@ public class SpigotMain extends JavaPlugin {
 
     private void registerListeners() {
         if (tabListener != null) HandlerList.unregisterAll(tabListener);
+        if (modernCommandSendListener != null) HandlerList.unregisterAll(modernCommandSendListener);
         if (tabPacketListener != null) {
             PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
         }
@@ -69,11 +73,29 @@ public class SpigotMain extends JavaPlugin {
         tabListener = new TabListener(this);
         getServer().getPluginManager().registerEvents(tabListener, this);
 
+        if (isClassAvailable("org.bukkit.event.player.PlayerCommandSendEvent")) {
+            registerModernCommandSendListener();
+        }
+
         tabPacketListener = new TabPacketListener(this);
         PacketEvents.getAPI().getEventManager().registerListener(tabPacketListener);
 
         if (getCommand("tabcompleter") != null) {
             getCommand("tabcompleter").setTabCompleter(new CustomTabCompleter(this));
+        }
+    }
+
+    private void registerModernCommandSendListener() {
+        modernCommandSendListener = new ModernCommandSendListener(this);
+        getServer().getPluginManager().registerEvents(modernCommandSendListener, this);
+    }
+
+    private static boolean isClassAvailable(String className) {
+        try {
+            Class.forName(className);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
         }
     }
 
