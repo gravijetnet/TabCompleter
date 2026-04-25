@@ -62,9 +62,9 @@ public class VelocityNativeListener {
             Map<String, ?> literals = (Map<String, ?>) LITERALS_FIELD.get(root);
 
             children.keySet().removeIf(name ->
-                    CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase()));
+                    !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission));
             literals.keySet().removeIf(name ->
-                    CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase()));
+                    !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission));
         } catch (Exception e) {
             plugin.getLogger().warn("TabCompleter: could not filter available commands: {}", e.getMessage());
         }
@@ -81,17 +81,17 @@ public class VelocityNativeListener {
         String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
 
         if (afterSlash.contains(" ")) {
-            // Argument completion — clear all suggestions if base command is blocked.
+            // Argument completion — clear all suggestions if base command is not visible.
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
-            if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
+            if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.getSuggestions().clear();
             }
         } else {
-            // Command name completion — remove blocked suggestions individually.
+            // Command name completion — keep only visible suggestions.
             List<String> filtered = new ArrayList<>();
             for (String text : event.getSuggestions()) {
                 String name = text.startsWith("/") ? text.substring(1) : text;
-                if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase())) {
+                if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)) {
                     filtered.add(text);
                 }
             }

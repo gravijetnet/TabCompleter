@@ -23,7 +23,7 @@ public class VelocityCommandListener {
         if (hasBypass(player)) return;
 
         String cmd = event.getCommand().split(" ", 2)[0].toLowerCase();
-        if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
+        if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
 
         event.setResult(CommandExecuteEvent.CommandResult.denied());
         player.sendMessage(LegacyComponentSerializer.legacyAmpersand()
