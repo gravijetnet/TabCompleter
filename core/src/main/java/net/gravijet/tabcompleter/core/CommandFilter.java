@@ -59,22 +59,23 @@ public final class CommandFilter {
     private static boolean isCommandInSet(Set<String> set, String cmd) {
         if (set.contains(cmd)) return true;
         if (cmd.contains(":")) {
-            // Only match by namespace prefix (e.g. "phoenix" allows "phoenix:friend"),
-            // never by suffix — so whitelisting "friend" does NOT allow "phoenix:friend".
-            return set.contains(cmd.split(":", 2)[0]);
+            String[] parts = cmd.split(":", 2);
+            // "essentials" in set → allows "essentials:friend"
+            if (set.contains(parts[0])) return true;
+            // "gamemode" in set → also allows "minecraft:gamemode" (same command, different namespace)
+            if (set.contains(parts[1])) return true;
         }
         return false;
     }
 
-    /** Legacy: Returns true if the command should be blocked (pure blocklist check). */
+    /** Returns true if the command should be blocked (pure blocklist check, namespace-prefix only). */
     public static boolean isCommandBlocked(PluginConfig config, String cmd) {
         String lower = cmd.toLowerCase();
         for (String blocked : config.getBlockedCommands()) {
             if (blocked.equalsIgnoreCase(lower)) return true;
-            if (lower.contains(":")) {
-                String[] parts = lower.split(":", 2);
-                if (blocked.equalsIgnoreCase(parts[0]) || blocked.equalsIgnoreCase(parts[1])) return true;
-            }
+            // namespace prefix: blocking "essentials" also blocks "essentials:friend"
+            // but blocking "friend" does NOT block "essentials:friend"
+            if (lower.contains(":") && blocked.equalsIgnoreCase(lower.split(":", 2)[0])) return true;
         }
         return false;
     }

@@ -60,10 +60,9 @@ public final class ConfigLoader {
         Map<String, GroupConfig> groups;
 
         if (isProxy) {
-            // Proxy always runs in blocklist mode; groups are not supported.
             mode   = "blocklist";
             cmds   = strList(data, "blocked-commands");
-            groups = Collections.emptyMap();
+            groups = parseGroups(data);
         } else {
             mode = str(data, "mode", "allowlist");
             // Prefer allowed-commands (allowlist mode); fall back to blocked-commands for compat.
