@@ -2,7 +2,6 @@ package net.gravijet.tabcompleter.velocity.listeners;
 
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
-import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.command.PlayerAvailableCommandsEvent;
@@ -30,15 +29,16 @@ public class VelocityNativeListener {
      * needed, works on Java 17+ without any --add-opens flags. We then re-add only
      * the allowed commands via the public addChild() API.
      */
+    @SuppressWarnings({"rawtypes", "unchecked"})
     @Subscribe(order = PostOrder.LAST)
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
 
-        RootCommandNode<CommandSource> root = event.getRootNode();
+        RootCommandNode root = event.getRootNode();
 
-        List<CommandNode<CommandSource>> toKeep = new ArrayList<>();
-        for (CommandNode<CommandSource> child : root.getChildren()) {
+        List<CommandNode> toKeep = new ArrayList<>();
+        for (CommandNode child : (java.util.Collection<CommandNode>) root.getChildren()) {
             String name = child.getName().toLowerCase();
             if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name, player::hasPermission)) {
                 toKeep.add(child);
@@ -48,7 +48,7 @@ public class VelocityNativeListener {
         // Live view — clear() empties the underlying map without reflection.
         root.getChildren().clear();
 
-        for (CommandNode<CommandSource> child : toKeep) {
+        for (CommandNode child : toKeep) {
             root.addChild(child);
         }
     }
