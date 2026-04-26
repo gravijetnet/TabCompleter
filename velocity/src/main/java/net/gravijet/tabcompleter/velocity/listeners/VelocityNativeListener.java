@@ -5,6 +5,7 @@ import com.mojang.brigadier.tree.RootCommandNode;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.command.PlayerAvailableCommandsEvent;
+import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.player.TabCompleteEvent;
 import com.velocitypowered.api.proxy.Player;
 import net.gravijet.tabcompleter.core.CommandFilter;
@@ -13,6 +14,7 @@ import net.gravijet.tabcompleter.velocity.VelocityMain;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
 
 public class VelocityNativeListener {
@@ -25,7 +27,7 @@ public class VelocityNativeListener {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    @Subscribe(order = PostOrder.LAST)
+    @Subscribe(order = PostOrder.LAST, async = true)
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
         try {
             Player player = event.getPlayer();
@@ -51,6 +53,38 @@ public class VelocityNativeListener {
             plugin.getLogger().error("[TC][L1] UNCAUGHT EXCEPTION in onAvailableCommands: {}", e.toString());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Fallback: after the player connects to a backend server, force Velocity to re-send
+     * the available-commands packet. This calls ConnectedPlayer#sendAvailableCommands()
+     * via reflection, which fires PlayerAvailableCommandsEvent again so our filter runs.
+     */
+    @Subscribe(order = PostOrder.LAST, async = true)
+    public void onServerPostConnect(ServerPostConnectEvent event) {
+        Player player = event.getPlayer();
+        if (hasBypass(player)) return;
+        plugin.getLogger().info("[TC][L1] ServerPostConnectEvent fallback: forcing sendAvailableCommands for player={}", player.getUsername());
+        try {
+            Method m = findMethod(player.getClass(), "sendAvailableCommands");
+            if (m != null) {
+                m.setAccessible(true);
+                m.invoke(player);
+                plugin.getLogger().info("[TC][L1] sendAvailableCommands() invoked via reflection for player={}", player.getUsername());
+            } else {
+                plugin.getLogger().warn("[TC][L1] sendAvailableCommands() not found on {}", player.getClass().getName());
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warn("[TC][L1] sendAvailableCommands reflection failed for player={}: {}", player.getUsername(), e.toString());
+        }
+    }
+
+    private static Method findMethod(Class<?> clazz, String name) {
+        while (clazz != null) {
+            try { return clazz.getDeclaredMethod(name); }
+            catch (NoSuchMethodException ignored) { clazz = clazz.getSuperclass(); }
+        }
+        return null;
     }
 
     @Subscribe
@@ -227,7 +261,17 @@ public class VelocityNativeListener {
                 continue;
             }
             int before = map.size();
-            map.keySet().removeAll(names);
+            try {
+                map.keySet().removeAll(names);
+            } catch (UnsupportedOperationException e) {
+                // Map is unmodifiable — remove one-by-one via iterator
+                Iterator<String> it = map.keySet().iterator();
+                while (it.hasNext()) {
+                    if (names.contains(it.next())) {
+                        try { it.remove(); } catch (UnsupportedOperationException ignored) {}
+                    }
+                }
+            }
             if (log != null) log.info("[TC][reflect] field '{}': {} -> {} entries", fn, before, map.size());
         }
     }
