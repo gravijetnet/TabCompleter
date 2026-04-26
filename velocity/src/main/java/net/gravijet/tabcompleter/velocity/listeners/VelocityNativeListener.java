@@ -65,17 +65,25 @@ public class VelocityNativeListener {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
         plugin.getLogger().info("[TC][L1] ServerPostConnectEvent fallback: forcing sendAvailableCommands for player={}", player.getUsername());
-        try {
-            Method m = findMethod(player.getClass(), "sendAvailableCommands");
+        String[] candidates = {"sendAvailableCommands", "sendCommandList", "sendPlayerCommands", "sendCommandTree", "sendCommands"};
+        boolean invoked = false;
+        for (String methodName : candidates) {
+            Method m = findMethod(player.getClass(), methodName);
             if (m != null) {
-                m.setAccessible(true);
-                m.invoke(player);
-                plugin.getLogger().info("[TC][L1] sendAvailableCommands() invoked via reflection for player={}", player.getUsername());
-            } else {
-                plugin.getLogger().warn("[TC][L1] sendAvailableCommands() not found on {}", player.getClass().getName());
+                try {
+                    m.setAccessible(true);
+                    m.invoke(player);
+                    plugin.getLogger().info("[TC][L1] {}() invoked via reflection for player={}", methodName, player.getUsername());
+                    invoked = true;
+                    break;
+                } catch (Exception e) {
+                    plugin.getLogger().warn("[TC][L1] {}() invocation failed for player={}: {}", methodName, player.getUsername(), e.toString());
+                }
             }
-        } catch (Exception e) {
-            plugin.getLogger().warn("[TC][L1] sendAvailableCommands reflection failed for player={}: {}", player.getUsername(), e.toString());
+        }
+        if (!invoked) {
+            plugin.getLogger().warn("[TC][L1] No sendAvailableCommands-like method found on {}. Tried: {}",
+                    player.getClass().getName(), java.util.Arrays.toString(candidates));
         }
     }
 
