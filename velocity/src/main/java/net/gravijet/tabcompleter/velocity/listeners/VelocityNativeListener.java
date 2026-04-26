@@ -145,7 +145,7 @@ public class VelocityNativeListener {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static void filterRootFallback(RootCommandNode root, Player player, PluginConfig config) {
         List<CommandNode> toKeep = new ArrayList<>();
-        for (CommandNode child : new ArrayList<>(root.getChildren())) {
+        for (CommandNode child : new ArrayList<CommandNode>(root.getChildren())) {
             if (CommandFilter.isCommandVisibleToPlayer(config, child.getName().toLowerCase(), player::hasPermission)) {
                 toKeep.add(child);
             }
