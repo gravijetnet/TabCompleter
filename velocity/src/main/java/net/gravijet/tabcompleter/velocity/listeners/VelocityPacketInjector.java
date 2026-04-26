@@ -12,25 +12,29 @@ import io.netty.channel.ChannelPromise;
 import net.gravijet.tabcompleter.velocity.VelocityMain;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Injects a ChannelOutboundHandlerAdapter into each player's Netty pipeline
  * to intercept the AvailableCommandsPacket (DeclareCommands) before encoding.
  *
- * This runs at the lowest possible level — completely independent of Velocity's
- * event system — so it catches every packet that reaches the client.
- *
- * Pipeline position: right before "handler" (Velocity's main connection handler).
- * In the outbound direction the write flows:
- *   handler → [our interceptor] → minecraft-encoder → framer → socket
- * so we see decoded MinecraftPacket objects, not raw bytes.
+ * Pipeline position: right before "handler" (Velocity's MinecraftConnection).
+ * Outbound flow:  handler → [OUR INTERCEPTOR] → minecraft-encoder → frame-encoder → socket
+ * We therefore see decoded MinecraftPacket objects, not raw bytes.
  */
 public class VelocityPacketInjector {
 
     private static final String HANDLER_NAME = "tabcompleter-commands";
 
-    // Velocity may rename the pipeline handlers across versions — try them in order.
+    // Try these handler names in order when looking for the injection point.
     private static final String[] INJECT_BEFORE = {"handler", "minecraft-handler", "connection"};
+
+    // Possible field names for the MinecraftConnection inside ConnectedPlayer.
+    private static final String[] CONN_FIELD_NAMES = {"connection", "minecraftConnection", "playerConnection"};
+
+    // Possible field names for the Channel inside MinecraftConnection.
+    private static final String[] CHAN_FIELD_NAMES = {"channel", "ch", "nettyChannel"};
 
     private final VelocityMain plugin;
 
@@ -54,12 +58,15 @@ public class VelocityPacketInjector {
     private void inject(Player player) {
         Channel channel = getChannel(player);
         if (channel == null) {
-            plugin.getLogger().warn("[TabCompleter] Netty inject: could not get channel for {}. "
-                    + "DeclareCommands packet filtering will rely on the event layer only.",
-                    player.getUsername());
+            plugin.getLogger().warn("[TC][Netty] Could not obtain Netty channel for {}. "
+                    + "DeclareCommands filtering will rely on the event layer only.", player.getUsername());
             return;
         }
 
+        List<String> pipelineNames = channel.pipeline().names();
+        plugin.getLogger().info("[TC][Netty] Pipeline for {}: {}", player.getUsername(), pipelineNames);
+
+        // Remove stale handler if present (e.g. server transfer).
         if (channel.pipeline().get(HANDLER_NAME) != null) {
             channel.pipeline().remove(HANDLER_NAME);
         }
@@ -69,23 +76,30 @@ public class VelocityPacketInjector {
         for (String before : INJECT_BEFORE) {
             if (channel.pipeline().get(before) != null) {
                 channel.pipeline().addBefore(before, HANDLER_NAME, handler);
+                plugin.getLogger().info("[TC][Netty] Injected before '{}' for player={}",
+                        before, player.getUsername());
+                plugin.getLogger().info("[TC][Netty] Pipeline after injection: {}", channel.pipeline().names());
                 return;
             }
         }
 
-        // Fallback: add right before the encoder so we still see packet objects.
-        for (String name : channel.pipeline().names()) {
+        // Fallback: inject right after the minecraft-encoder so we are still in
+        // the outbound path before bytes leave for the client.
+        for (String name : pipelineNames) {
             if (name.contains("encoder")) {
                 channel.pipeline().addAfter(name, HANDLER_NAME, handler);
+                plugin.getLogger().info("[TC][Netty] Fallback: injected after encoder '{}' for player={}",
+                        name, player.getUsername());
+                plugin.getLogger().info("[TC][Netty] Pipeline after injection: {}", channel.pipeline().names());
                 return;
             }
         }
 
-        plugin.getLogger().warn("[TabCompleter] Netty inject: could not find injection point for {}. Pipeline: {}",
-                player.getUsername(), channel.pipeline().names());
+        plugin.getLogger().warn("[TC][Netty] No injection point found for {}! Pipeline: {}",
+                player.getUsername(), pipelineNames);
     }
 
-    // Walk the class hierarchy looking for a field by name.
+    // Walk the class hierarchy to find a declared field by name.
     private static Field findField(Class<?> clazz, String name) {
         while (clazz != null) {
             try { return clazz.getDeclaredField(name); }
@@ -96,17 +110,48 @@ public class VelocityPacketInjector {
 
     Channel getChannel(Player player) {
         try {
-            Field connField = findField(player.getClass(), "connection");
-            if (connField == null) return null;
-            connField.setAccessible(true);
-            Object conn = connField.get(player);
+            // --- Step 1: find the MinecraftConnection ---
+            Object conn = null;
+            String usedConnField = null;
+            for (String fieldName : CONN_FIELD_NAMES) {
+                Field f = findField(player.getClass(), fieldName);
+                if (f == null) continue;
+                f.setAccessible(true);
+                Object val = f.get(player);
+                if (val != null) {
+                    conn = val;
+                    usedConnField = fieldName;
+                    break;
+                }
+            }
 
-            Field chanField = findField(conn.getClass(), "channel");
-            if (chanField == null) return null;
-            chanField.setAccessible(true);
-            Object chan = chanField.get(conn);
-            return chan instanceof Channel ? (Channel) chan : null;
+            if (conn == null) {
+                plugin.getLogger().warn("[TC][Netty] Could not find connection field in {}. "
+                        + "Tried: {}", player.getClass().getName(), List.of(CONN_FIELD_NAMES));
+                return null;
+            }
+            plugin.getLogger().debug("[TC][Netty] Found connection via field '{}' (type={})",
+                    usedConnField, conn.getClass().getName());
+
+            // --- Step 2: find the Channel inside the connection ---
+            for (String fieldName : CHAN_FIELD_NAMES) {
+                Field f = findField(conn.getClass(), fieldName);
+                if (f == null) continue;
+                f.setAccessible(true);
+                Object val = f.get(conn);
+                if (val instanceof Channel) {
+                    plugin.getLogger().debug("[TC][Netty] Found channel via field '{}' in {}",
+                            fieldName, conn.getClass().getName());
+                    return (Channel) val;
+                }
+            }
+
+            plugin.getLogger().warn("[TC][Netty] Could not find Channel field in {}. Tried: {}",
+                    conn.getClass().getName(), List.of(CHAN_FIELD_NAMES));
+            return null;
+
         } catch (Exception e) {
+            plugin.getLogger().warn("[TC][Netty] getChannel error for {}: {}", player.getUsername(), e.toString());
             return null;
         }
     }
@@ -126,6 +171,8 @@ public class VelocityPacketInjector {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             if (isCommandPacket(msg)) {
+                plugin.getLogger().info("[TC][Netty] Intercepted command packet: class='{}' for player={}",
+                        msg.getClass().getName(), player.getUsername());
                 filterPacket(msg);
             }
             super.write(ctx, msg, promise);
@@ -133,7 +180,6 @@ public class VelocityPacketInjector {
 
         private static boolean isCommandPacket(Object msg) {
             String name = msg.getClass().getSimpleName();
-            // Velocity names this differently across versions — match any variant.
             return name.contains("AvailableCommands")
                     || name.contains("DeclareCommands")
                     || name.equals("CommandsPacket");
@@ -141,36 +187,65 @@ public class VelocityPacketInjector {
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         private void filterPacket(Object packet) {
-            // Check bypass before touching the packet.
             String bypassPerm = plugin.getPluginConfig().getBypassPermission();
-            if (player.hasPermission(bypassPerm) || player.hasPermission("*")) return;
+            boolean bypass = player.hasPermission(bypassPerm) || player.hasPermission("*");
+            plugin.getLogger().info("[TC][Netty] filterPacket for player={}, bypass={}", player.getUsername(), bypass);
+            if (bypass) return;
 
             try {
-                // Find the field that holds the RootCommandNode.
-                // Common names across Velocity versions: rootNode, root, commandTree.
+                // Dump all fields of the packet class so we know what's available.
+                StringBuilder fieldDump = new StringBuilder();
+                for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (Field f : c.getDeclaredFields()) {
+                        fieldDump.append(c.getSimpleName())
+                                .append('.').append(f.getName())
+                                .append(':').append(f.getType().getSimpleName())
+                                .append(' ');
+                    }
+                }
+                plugin.getLogger().info("[TC][Netty] Packet fields for {}: {}", packet.getClass().getSimpleName(), fieldDump);
+
                 Field rootField = findRootField(packet.getClass());
-                if (rootField == null) return;
+                if (rootField == null) {
+                    plugin.getLogger().warn("[TC][Netty] No RootCommandNode field found in {}",
+                            packet.getClass().getName());
+                    return;
+                }
+
+                plugin.getLogger().info("[TC][Netty] Root field: {}.{} (declaredType={})",
+                        rootField.getDeclaringClass().getSimpleName(),
+                        rootField.getName(),
+                        rootField.getType().getSimpleName());
 
                 rootField.setAccessible(true);
                 Object root = rootField.get(packet);
 
-                if (root instanceof RootCommandNode) {
-                    VelocityNativeListener.filterRoot(root, player, plugin.getPluginConfig());
+                if (root == null) {
+                    plugin.getLogger().warn("[TC][Netty] Root field '{}' is null for player={}",
+                            rootField.getName(), player.getUsername());
+                    return;
                 }
+
+                plugin.getLogger().info("[TC][Netty] Root instance class: {}", root.getClass().getName());
+                plugin.getLogger().info("[TC][Netty] root instanceof RootCommandNode: {}", root instanceof RootCommandNode);
+
+                VelocityNativeListener.filterRoot(root, player, plugin.getPluginConfig(), plugin.getLogger());
+
             } catch (Exception e) {
-                plugin.getLogger().debug("[TabCompleter] Packet filter error for {}: {}",
-                        player.getUsername(), e.getMessage());
+                plugin.getLogger().warn("[TC][Netty] filterPacket exception for player={}: {} — {}",
+                        player.getUsername(), e.getClass().getName(), e.getMessage());
+                e.printStackTrace();
             }
         }
 
         private static Field findRootField(Class<?> startClass) {
-            // Pass 1: exact type match — most reliable across Velocity versions.
+            // Pass 1: exact type match (most reliable across Velocity versions)
             for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     if (f.getType().getSimpleName().contains("RootCommandNode")) return f;
                 }
             }
-            // Pass 2: name-based fallback.
+            // Pass 2: name-based fallback
             for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     String n = f.getName();

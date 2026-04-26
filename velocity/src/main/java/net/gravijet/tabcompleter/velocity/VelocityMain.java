@@ -92,6 +92,10 @@ public class VelocityMain {
                 throw new RuntimeException("Cannot load config", ex);
             }
         }
+        logger.info("[TC] Config loaded: mode='{}', blockedCommands={}, groups={}",
+                pluginConfig.getSpigotMode(),
+                pluginConfig.getBlockedCommands(),
+                pluginConfig.getGroups().keySet());
     }
 
     private void registerListeners() {
