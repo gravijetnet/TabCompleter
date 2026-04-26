@@ -21,30 +21,36 @@ public class VelocityNativeListener {
 
     public VelocityNativeListener(VelocityMain plugin) {
         this.plugin = plugin;
+        plugin.getLogger().info("[TC][L1] VelocityNativeListener constructed and registered.");
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     @Subscribe(order = PostOrder.LAST)
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
-        Player player = event.getPlayer();
-        Logger log = plugin.getLogger();
-        PluginConfig config = plugin.getPluginConfig();
+        try {
+            Player player = event.getPlayer();
+            Logger log = plugin.getLogger();
+            PluginConfig config = plugin.getPluginConfig();
 
-        log.info("[TC][L1] PlayerAvailableCommandsEvent fired for player={}", player.getUsername());
-        log.info("[TC][L1] Config: mode='{}', blockedCommands={}", config.getSpigotMode(), config.getBlockedCommands());
+            log.info("[TC][L1] PlayerAvailableCommandsEvent fired for player={}", player.getUsername());
+            log.info("[TC][L1] Config: mode='{}', blockedCommands={}", config.getSpigotMode(), config.getBlockedCommands());
 
-        boolean bypass = hasBypass(player);
-        log.info("[TC][L1] bypass={} (bypassPerm='{}')", bypass, config.getBypassPermission());
-        if (bypass) return;
+            boolean bypass = hasBypass(player);
+            log.info("[TC][L1] bypass={} (bypassPerm='{}')", bypass, config.getBypassPermission());
+            if (bypass) return;
 
-        Object rootObj = event.getRootNode();
-        if (rootObj == null) {
-            log.warn("[TC][L1] getRootNode() returned null! Cannot filter.");
-            return;
+            Object rootObj = event.getRootNode();
+            if (rootObj == null) {
+                log.warn("[TC][L1] getRootNode() returned null! Cannot filter.");
+                return;
+            }
+            log.info("[TC][L1] Root node class: {}", rootObj.getClass().getName());
+
+            filterRoot(rootObj, player, config, log);
+        } catch (Exception e) {
+            plugin.getLogger().error("[TC][L1] UNCAUGHT EXCEPTION in onAvailableCommands: {}", e.toString());
+            e.printStackTrace();
         }
-        log.info("[TC][L1] Root node class: {}", rootObj.getClass().getName());
-
-        filterRoot(rootObj, player, config, log);
     }
 
     @Subscribe
