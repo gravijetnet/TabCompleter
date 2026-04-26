@@ -7,68 +7,40 @@ import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+import net.gravijet.tabcompleter.core.CommandFilter;
 import net.gravijet.tabcompleter.velocity.VelocityMain;
 
 import java.lang.reflect.Field;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Injects a ChannelOutboundHandlerAdapter into each player's Netty pipeline
- * to intercept the AvailableCommandsPacket (DeclareCommands) before encoding.
- *
- * Pipeline position: right before "handler" (Velocity's MinecraftConnection).
- * Outbound flow:  handler → [OUR INTERCEPTOR] → minecraft-encoder → frame-encoder → socket
- * We therefore see decoded MinecraftPacket objects, not raw bytes.
- */
 public class VelocityPacketInjector {
 
     private static final String HANDLER_NAME = "tabcompleter-commands";
-
-    // Try these handler names in order when looking for the injection point.
     private static final String[] INJECT_BEFORE = {"handler", "minecraft-handler", "connection"};
-
-    // Possible field names for the MinecraftConnection inside ConnectedPlayer.
     private static final String[] CONN_FIELD_NAMES = {"connection", "minecraftConnection", "playerConnection"};
-
-    // Possible field names for the Channel inside MinecraftConnection.
     private static final String[] CHAN_FIELD_NAMES = {"channel", "ch", "nettyChannel"};
-
-    // Write log limit — set to 0 to silence, >0 to log first N writes per inject.
-    static final int MAX_WRITE_LOGS = 30;
 
     private final VelocityMain plugin;
 
-    // Per-player write counter — reset on every inject() call.
-    private final Map<UUID, AtomicInteger> writeCounters = new ConcurrentHashMap<>();
-
     public VelocityPacketInjector(VelocityMain plugin) {
         this.plugin = plugin;
-        plugin.getLogger().info("[TC][Netty] VelocityPacketInjector constructed.");
     }
 
     @Subscribe
     public void onPostLogin(PostLoginEvent event) {
-        plugin.getLogger().info("[TC][Netty] PostLoginEvent -> injecting for player={}", event.getPlayer().getUsername());
         inject(event.getPlayer());
     }
 
     @Subscribe
     public void onServerPostConnect(ServerPostConnectEvent event) {
-        Player player = event.getPlayer();
-        plugin.getLogger().info("[TC][Netty] ServerPostConnectEvent -> re-injecting for player={}", player.getUsername());
-        inject(player);
+        inject(event.getPlayer());
     }
 
     @Subscribe
     public void onDisconnect(DisconnectEvent event) {
-        writeCounters.remove(event.getPlayer().getUniqueId());
         Channel ch = getChannel(event.getPlayer());
         if (ch != null && ch.pipeline().get(HANDLER_NAME) != null) {
             ch.pipeline().remove(HANDLER_NAME);
@@ -78,51 +50,33 @@ public class VelocityPacketInjector {
     private void inject(Player player) {
         Channel channel = getChannel(player);
         if (channel == null) {
-            plugin.getLogger().warn("[TC][Netty] Could not obtain Netty channel for {}. "
-                    + "DeclareCommands filtering will rely on the event layer only.", player.getUsername());
+            plugin.getLogger().warn("[TC] Could not obtain Netty channel for {}. Command filtering may be incomplete.", player.getUsername());
             return;
         }
 
-        List<String> pipelineNames = channel.pipeline().names();
-        plugin.getLogger().info("[TC][Netty] Pipeline for {}: {}", player.getUsername(), pipelineNames);
-
-        // Remove stale handler if present (e.g. server transfer).
         if (channel.pipeline().get(HANDLER_NAME) != null) {
             channel.pipeline().remove(HANDLER_NAME);
-            plugin.getLogger().info("[TC][Netty] Removed stale handler for player={}", player.getUsername());
         }
 
-        // Reset write counter so we log the first 200 writes after (re-)injection.
-        AtomicInteger counter = new AtomicInteger(0);
-        writeCounters.put(player.getUniqueId(), counter);
-
-        CommandPacketHandler handler = new CommandPacketHandler(plugin, player, counter);
+        CommandPacketHandler handler = new CommandPacketHandler(plugin, player);
 
         for (String before : INJECT_BEFORE) {
             if (channel.pipeline().get(before) != null) {
                 channel.pipeline().addBefore(before, HANDLER_NAME, handler);
-                plugin.getLogger().info("[TC][Netty] Injected before '{}' for player={}. Pipeline after: {}",
-                        before, player.getUsername(), channel.pipeline().names());
                 return;
             }
         }
 
-        // Fallback: inject right after the minecraft-encoder so we are still in
-        // the outbound path before bytes leave for the client.
-        for (String name : pipelineNames) {
+        for (String name : channel.pipeline().names()) {
             if (name.contains("encoder")) {
                 channel.pipeline().addAfter(name, HANDLER_NAME, handler);
-                plugin.getLogger().info("[TC][Netty] Fallback: injected after encoder '{}' for player={}. Pipeline after: {}",
-                        name, player.getUsername(), channel.pipeline().names());
                 return;
             }
         }
 
-        plugin.getLogger().warn("[TC][Netty] No injection point found for {}! Pipeline: {}",
-                player.getUsername(), pipelineNames);
+        plugin.getLogger().warn("[TC] No injection point found for {}.", player.getUsername());
     }
 
-    // Walk the class hierarchy to find a declared field by name.
     private static Field findField(Class<?> clazz, String name) {
         while (clazz != null) {
             try { return clazz.getDeclaredField(name); }
@@ -133,97 +87,107 @@ public class VelocityPacketInjector {
 
     Channel getChannel(Player player) {
         try {
-            // --- Step 1: find the MinecraftConnection ---
             Object conn = null;
-            String usedConnField = null;
             for (String fieldName : CONN_FIELD_NAMES) {
                 Field f = findField(player.getClass(), fieldName);
                 if (f == null) continue;
                 f.setAccessible(true);
                 Object val = f.get(player);
-                if (val != null) {
-                    conn = val;
-                    usedConnField = fieldName;
-                    break;
-                }
+                if (val != null) { conn = val; break; }
             }
 
             if (conn == null) {
-                plugin.getLogger().warn("[TC][Netty] Could not find connection field in {}. "
-                        + "Tried: {}", player.getClass().getName(), List.of(CONN_FIELD_NAMES));
+                plugin.getLogger().warn("[TC] Could not find connection field in {}.", player.getClass().getName());
                 return null;
             }
-            plugin.getLogger().debug("[TC][Netty] Found connection via field '{}' (type={})",
-                    usedConnField, conn.getClass().getName());
 
-            // --- Step 2: find the Channel inside the connection ---
             for (String fieldName : CHAN_FIELD_NAMES) {
                 Field f = findField(conn.getClass(), fieldName);
                 if (f == null) continue;
                 f.setAccessible(true);
                 Object val = f.get(conn);
-                if (val instanceof Channel) {
-                    plugin.getLogger().debug("[TC][Netty] Found channel via field '{}' in {}",
-                            fieldName, conn.getClass().getName());
-                    return (Channel) val;
-                }
+                if (val instanceof Channel) return (Channel) val;
             }
 
-            plugin.getLogger().warn("[TC][Netty] Could not find Channel field in {}. Tried: {}",
-                    conn.getClass().getName(), List.of(CHAN_FIELD_NAMES));
+            plugin.getLogger().warn("[TC] Could not find Channel field in {}.", conn.getClass().getName());
             return null;
 
         } catch (Exception e) {
-            plugin.getLogger().warn("[TC][Netty] getChannel error for {}: {}", player.getUsername(), e.toString());
+            plugin.getLogger().warn("[TC] getChannel error for {}: {}", player.getUsername(), e.toString());
             return null;
         }
     }
 
     // -------------------------------------------------------------------------
 
-    private static final class CommandPacketHandler extends ChannelOutboundHandlerAdapter {
+    private static final class CommandPacketHandler extends ChannelDuplexHandler {
 
         private final VelocityMain plugin;
         private final Player player;
-        private final AtomicInteger writeCounter;
 
-        CommandPacketHandler(VelocityMain plugin, Player player, AtomicInteger writeCounter) {
+        CommandPacketHandler(VelocityMain plugin, Player player) {
             this.plugin = plugin;
             this.player = player;
-            this.writeCounter = writeCounter;
+        }
+
+        // Intercept inbound packets (client → proxy).
+        // For legacy clients (1.8.x) that send a tab-complete request for argument
+        // completions of a blocked command, we drop the packet here so the backend
+        // never receives it and never sends suggestions back.
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if (!hasBypass() && isTabCompleteRequestPacket(msg)) {
+                String partial = extractPartialCommand(msg);
+                if (partial != null && !partial.isEmpty()) {
+                    String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
+                    if (afterSlash.contains(" ")) {
+                        String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+                        if (!baseCmd.isEmpty() && !CommandFilter.isCommandVisibleToPlayer(
+                                plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
+                            // Drop the request — client will receive no suggestions.
+                            return;
+                        }
+                    }
+                }
+            }
+            super.channelRead(ctx, msg);
         }
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            int count = writeCounter.incrementAndGet();
-            // Log every write for the first MAX_WRITE_LOGS packets so we can see EXACTLY
-            // what class names flow through after injection.
-            if (count <= MAX_WRITE_LOGS) {
-                plugin.getLogger().info("[TC][Netty] write#{} class='{}' player={}",
-                        count, msg.getClass().getName(), player.getUsername());
-            } else if (count == MAX_WRITE_LOGS + 1) {
-                plugin.getLogger().info("[TC][Netty] write-log limit ({}) reached for player={}, silencing further write logs",
-                        MAX_WRITE_LOGS, player.getUsername());
-            }
-
             if (isCommandPacket(msg)) {
-                plugin.getLogger().info("[TC][Netty] >>> COMMAND PACKET INTERCEPTED: class='{}' player={}",
-                        msg.getClass().getName(), player.getUsername());
                 filterPacket(msg);
             }
             super.write(ctx, msg, promise);
         }
 
+        private boolean isTabCompleteRequestPacket(Object msg) {
+            String name = msg.getClass().getSimpleName();
+            return name.contains("TabComplete") && !name.toLowerCase().contains("response");
+        }
+
+        private String extractPartialCommand(Object packet) {
+            for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (f.getType() != String.class) continue;
+                    try {
+                        f.setAccessible(true);
+                        String val = (String) f.get(packet);
+                        if (val != null && !val.isEmpty()) return val;
+                    } catch (Exception ignored) {}
+                }
+            }
+            return null;
+        }
+
         private boolean isCommandPacket(Object msg) {
             String name = msg.getClass().getSimpleName();
             String fullName = msg.getClass().getName();
-            // Name-based check (covers most Velocity versions)
             if (name.contains("AvailableCommands") || name.contains("DeclareCommands")
                     || name.equals("CommandsPacket") || name.equals("Commands")
                     || fullName.contains("availablecommands") || fullName.contains("declarecommands")) {
                 return true;
             }
-            // Reflection fallback: if any field of type RootCommandNode exists, treat as command packet
             for (Class<?> c = msg.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     String typeName = f.getType().getSimpleName();
@@ -232,75 +196,37 @@ public class VelocityPacketInjector {
                     }
                 }
             }
-            // If class name suggests commands, log it so we can add an explicit check.
-            if (name.toLowerCase().contains("command")) {
-                plugin.getLogger().warn("[TC][Netty] Possible command packet NOT matched: class='{}' player={}",
-                        msg.getClass().getName(), player.getUsername());
-            }
             return false;
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         private void filterPacket(Object packet) {
-            String bypassPerm = plugin.getPluginConfig().getBypassPermission();
-            boolean bypass = player.hasPermission(bypassPerm) || player.hasPermission("*");
-            plugin.getLogger().info("[TC][Netty] filterPacket player={} bypass={}", player.getUsername(), bypass);
-            if (bypass) return;
-
+            if (hasBypass()) return;
             try {
-                // Dump all fields of the packet class so we know what's available.
-                StringBuilder fieldDump = new StringBuilder();
-                for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                    for (Field f : c.getDeclaredFields()) {
-                        fieldDump.append(c.getSimpleName())
-                                .append('.').append(f.getName())
-                                .append(':').append(f.getType().getSimpleName())
-                                .append(' ');
-                    }
-                }
-                plugin.getLogger().info("[TC][Netty] Packet fields for {}: {}", packet.getClass().getSimpleName(), fieldDump);
-
                 Field rootField = findRootField(packet.getClass());
-                if (rootField == null) {
-                    plugin.getLogger().warn("[TC][Netty] No RootCommandNode field found in {}",
-                            packet.getClass().getName());
-                    return;
-                }
-
-                plugin.getLogger().info("[TC][Netty] Root field: {}.{} (declaredType={})",
-                        rootField.getDeclaringClass().getSimpleName(),
-                        rootField.getName(),
-                        rootField.getType().getSimpleName());
+                if (rootField == null) return;
 
                 rootField.setAccessible(true);
                 Object root = rootField.get(packet);
+                if (root == null) return;
 
-                if (root == null) {
-                    plugin.getLogger().warn("[TC][Netty] Root field '{}' is null for player={}",
-                            rootField.getName(), player.getUsername());
-                    return;
-                }
-
-                plugin.getLogger().info("[TC][Netty] Root class={} instanceof RootCommandNode={}",
-                        root.getClass().getName(), root instanceof RootCommandNode);
-
-                VelocityNativeListener.filterRoot(root, player, plugin.getPluginConfig(), plugin.getLogger());
-
+                VelocityNativeListener.filterRoot(root, player, plugin.getPluginConfig(), null);
             } catch (Exception e) {
-                plugin.getLogger().warn("[TC][Netty] filterPacket exception player={}: {} — {}",
-                        player.getUsername(), e.getClass().getName(), e.getMessage());
-                e.printStackTrace();
+                plugin.getLogger().warn("[TC] filterPacket error for {}: {}", player.getUsername(), e.getMessage());
             }
         }
 
+        private boolean hasBypass() {
+            String perm = plugin.getPluginConfig().getBypassPermission();
+            return player.hasPermission(perm) || player.hasPermission("*");
+        }
+
         private static Field findRootField(Class<?> startClass) {
-            // Pass 1: exact type match (most reliable across Velocity versions)
             for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     if (f.getType().getSimpleName().contains("RootCommandNode")) return f;
                 }
             }
-            // Pass 2: name-based fallback
             for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     String n = f.getName();

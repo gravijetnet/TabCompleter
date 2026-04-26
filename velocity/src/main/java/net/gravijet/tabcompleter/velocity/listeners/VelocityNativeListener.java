@@ -23,7 +23,6 @@ public class VelocityNativeListener {
 
     public VelocityNativeListener(VelocityMain plugin) {
         this.plugin = plugin;
-        plugin.getLogger().info("[TC][L1] VelocityNativeListener constructed and registered.");
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -31,59 +30,31 @@ public class VelocityNativeListener {
     public void onAvailableCommands(PlayerAvailableCommandsEvent event) {
         try {
             Player player = event.getPlayer();
-            Logger log = plugin.getLogger();
-            PluginConfig config = plugin.getPluginConfig();
-
-            log.info("[TC][L1] PlayerAvailableCommandsEvent fired for player={}", player.getUsername());
-            log.info("[TC][L1] Config: mode='{}', blockedCommands={}", config.getSpigotMode(), config.getBlockedCommands());
-
-            boolean bypass = hasBypass(player);
-            log.info("[TC][L1] bypass={} (bypassPerm='{}')", bypass, config.getBypassPermission());
-            if (bypass) return;
+            if (hasBypass(player)) return;
 
             Object rootObj = event.getRootNode();
-            if (rootObj == null) {
-                log.warn("[TC][L1] getRootNode() returned null! Cannot filter.");
-                return;
-            }
-            log.info("[TC][L1] Root node class: {}", rootObj.getClass().getName());
+            if (rootObj == null) return;
 
-            filterRoot(rootObj, player, config, log);
+            filterRoot(rootObj, player, plugin.getPluginConfig(), plugin.getLogger());
         } catch (Exception e) {
-            plugin.getLogger().error("[TC][L1] UNCAUGHT EXCEPTION in onAvailableCommands: {}", e.toString());
-            e.printStackTrace();
+            plugin.getLogger().error("[TC] Exception in onAvailableCommands: {}", e.toString());
         }
     }
 
-    /**
-     * Fallback: after the player connects to a backend server, force Velocity to re-send
-     * the available-commands packet. This calls ConnectedPlayer#sendAvailableCommands()
-     * via reflection, which fires PlayerAvailableCommandsEvent again so our filter runs.
-     */
     @Subscribe(order = PostOrder.LAST, async = true)
     public void onServerPostConnect(ServerPostConnectEvent event) {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
-        plugin.getLogger().info("[TC][L1] ServerPostConnectEvent fallback: forcing sendAvailableCommands for player={}", player.getUsername());
         String[] candidates = {"sendAvailableCommands", "sendCommandList", "sendPlayerCommands", "sendCommandTree", "sendCommands"};
-        boolean invoked = false;
         for (String methodName : candidates) {
             Method m = findMethod(player.getClass(), methodName);
             if (m != null) {
                 try {
                     m.setAccessible(true);
                     m.invoke(player);
-                    plugin.getLogger().info("[TC][L1] {}() invoked via reflection for player={}", methodName, player.getUsername());
-                    invoked = true;
-                    break;
-                } catch (Exception e) {
-                    plugin.getLogger().warn("[TC][L1] {}() invocation failed for player={}: {}", methodName, player.getUsername(), e.toString());
-                }
+                    return;
+                } catch (Exception ignored) {}
             }
-        }
-        if (!invoked) {
-            plugin.getLogger().warn("[TC][L1] No sendAvailableCommands-like method found on {}. Tried: {}",
-                    player.getClass().getName(), java.util.Arrays.toString(candidates));
         }
     }
 
@@ -95,7 +66,8 @@ public class VelocityNativeListener {
         return null;
     }
 
-    @Subscribe
+    // Runs last to ensure our filter is applied after other listeners have populated suggestions.
+    @Subscribe(order = PostOrder.LAST)
     public void onTabComplete(TabCompleteEvent event) {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
@@ -103,14 +75,11 @@ public class VelocityNativeListener {
         String partial = event.getPartialMessage();
         if (partial == null) return;
 
-        plugin.getLogger().info("[TC][Tab] partial='{}' player={}", partial, player.getUsername());
-
         String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
 
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
-                plugin.getLogger().info("[TC][Tab] Clearing argument suggestions for blocked cmd '{}'", baseCmd);
                 event.getSuggestions().clear();
             }
         } else {
@@ -121,7 +90,6 @@ public class VelocityNativeListener {
                     filtered.add(text);
                 }
             }
-            plugin.getLogger().info("[TC][Tab] Suggestions {} -> {}", event.getSuggestions().size(), filtered.size());
             event.getSuggestions().clear();
             event.getSuggestions().addAll(filtered);
         }
@@ -138,125 +106,74 @@ public class VelocityNativeListener {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void filterRoot(Object rootObj, Player player, PluginConfig config, Logger log) {
-        if (rootObj == null) {
-            if (log != null) log.warn("[TC][filter] rootObj is null");
-            return;
-        }
+        if (rootObj == null) return;
 
         String actualClass = rootObj.getClass().getName();
-
-        // Check both via instanceof and class name to catch classloader-mismatch scenarios
         boolean instanceOfCheck = rootObj instanceof RootCommandNode;
         boolean classNameCheck  = actualClass.equals("com.mojang.brigadier.tree.RootCommandNode");
 
-        if (log != null) {
-            log.info("[TC][filter] root class='{}' instanceof={} classNameMatch={}",
-                    actualClass, instanceOfCheck, classNameCheck);
-        }
-
         if (!instanceOfCheck && !classNameCheck) {
-            if (log != null) log.warn("[TC][filter] rootObj is not a RootCommandNode — aborting filter");
+            if (log != null) log.warn("[TC] filterRoot: unexpected root class '{}'", actualClass);
             return;
         }
 
-        // Fetch the raw internal 'children' map directly via reflection.
-        // We avoid getChildren().clear() + re-add because some Velocity builds return
-        // an unmodifiable view from getChildren(), making the clear() a no-op.
-        Map<String, Object> childrenMap = getInternalMap(rootObj, "children", log);
+        Map<String, Object> childrenMap = getInternalMap(rootObj, "children", null);
 
         if (childrenMap == null) {
-            if (log != null) log.warn("[TC][filter] Could not access 'children' map via reflection — trying fallback");
             if (instanceOfCheck) {
-                filterRootFallback((RootCommandNode) rootObj, player, config, log);
+                filterRootFallback((RootCommandNode) rootObj, player, config);
             }
             return;
         }
 
-        if (log != null) log.info("[TC][filter] Commands before filter ({}): {}", childrenMap.size(), new ArrayList<>(childrenMap.keySet()));
-
         Set<String> toRemove = new LinkedHashSet<>();
         for (String name : new ArrayList<>(childrenMap.keySet())) {
-            boolean visible = CommandFilter.isCommandVisibleToPlayer(config, name.toLowerCase(), player::hasPermission);
-            if (log != null) log.info("[TC][filter] '{}' -> visible={}", name, visible);
-            if (!visible) toRemove.add(name);
+            if (!CommandFilter.isCommandVisibleToPlayer(config, name.toLowerCase(), player::hasPermission)) {
+                toRemove.add(name);
+            }
         }
 
-        if (log != null) log.info("[TC][filter] Will remove {} commands: {}", toRemove.size(), toRemove);
-
-        if (toRemove.isEmpty()) {
-            if (log != null) log.info("[TC][filter] Nothing to remove — all commands are allowed.");
-            return;
-        }
-
-        removeFromAllMaps(rootObj, toRemove, log);
-
-        if (log != null) {
-            Map<String, Object> after = getInternalMap(rootObj, "children", null);
-            log.info("[TC][filter] Commands after filter ({}): {}",
-                    after == null ? "?" : after.size(),
-                    after == null ? "unknown" : new ArrayList<>(after.keySet()));
+        if (!toRemove.isEmpty()) {
+            removeFromAllMaps(rootObj, toRemove, null);
         }
     }
 
-    /** Overload without logger — used by packet injector when logger is supplied separately. */
     static void filterRoot(Object rootObj, Player player, PluginConfig config) {
         filterRoot(rootObj, player, config, null);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static void filterRootFallback(RootCommandNode root, Player player, PluginConfig config, Logger log) {
-        Collection<CommandNode<?>> children = root.getChildren();
-        if (log != null) log.info("[TC][fallback] Using public API. Children count: {}", children.size());
-
+    private static void filterRootFallback(RootCommandNode root, Player player, PluginConfig config) {
         List<CommandNode> toKeep = new ArrayList<>();
-        List<String> toRemoveNames = new ArrayList<>();
-        for (CommandNode child : new ArrayList<>(children)) {
-            boolean visible = CommandFilter.isCommandVisibleToPlayer(config, child.getName().toLowerCase(), player::hasPermission);
-            if (visible) toKeep.add(child);
-            else toRemoveNames.add(child.getName());
-        }
-        if (log != null) log.info("[TC][fallback] keep={}, remove={}", toKeep.size(), toRemoveNames);
-
-        // Try reflection clear first; fall back to public API clear
-        boolean clearedViaReflection = false;
-        for (String fn : new String[]{"children", "literals", "arguments"}) {
-            Map<?, ?> m = getInternalMap(root, fn, log);
-            if (m != null) { m.clear(); clearedViaReflection = true; }
-        }
-        if (!clearedViaReflection) {
-            try {
-                root.getChildren().clear();
-                if (log != null) log.info("[TC][fallback] Cleared via getChildren().clear()");
-            } catch (Exception e) {
-                if (log != null) log.warn("[TC][fallback] getChildren().clear() failed: {}", e.getMessage());
+        for (CommandNode child : new ArrayList<>(root.getChildren())) {
+            if (CommandFilter.isCommandVisibleToPlayer(config, child.getName().toLowerCase(), player::hasPermission)) {
+                toKeep.add(child);
             }
         }
 
+        boolean clearedViaReflection = false;
+        for (String fn : new String[]{"children", "literals", "arguments"}) {
+            Map<?, ?> m = getInternalMap(root, fn, null);
+            if (m != null) { m.clear(); clearedViaReflection = true; }
+        }
+        if (!clearedViaReflection) {
+            try { root.getChildren().clear(); } catch (Exception ignored) {}
+        }
+
         for (CommandNode child : toKeep) root.addChild(child);
-        if (log != null) log.info("[TC][fallback] Done. Commands remaining: {}", root.getChildren().size());
     }
 
     @SuppressWarnings("unchecked")
     static <V> Map<String, V> getInternalMap(Object node, String fieldName, Logger log) {
         Field f = findField(node.getClass(), fieldName);
-        if (f == null) {
-            if (log != null) log.warn("[TC][reflect] Field '{}' not found in class hierarchy of {}",
-                    fieldName, node.getClass().getName());
-            return null;
-        }
+        if (f == null) return null;
         try {
             f.setAccessible(true);
             Object val = f.get(node);
-            if (val instanceof Map) {
-                if (log != null) log.info("[TC][reflect] Field '{}' found in {} — type {}",
-                        fieldName, f.getDeclaringClass().getSimpleName(), val.getClass().getSimpleName());
-                return (Map<String, V>) val;
-            }
-            if (log != null) log.warn("[TC][reflect] Field '{}' is not a Map, got: {}",
-                    fieldName, val == null ? "null" : val.getClass().getName());
+            if (val instanceof Map) return (Map<String, V>) val;
             return null;
         } catch (Exception e) {
-            if (log != null) log.warn("[TC][reflect] Error accessing field '{}': {}", fieldName, e.toString());
+            if (log != null) log.warn("[TC] Error accessing field '{}': {}", fieldName, e.toString());
             return null;
         }
     }
@@ -264,15 +181,10 @@ public class VelocityNativeListener {
     static void removeFromAllMaps(Object node, Set<String> names, Logger log) {
         for (String fn : new String[]{"children", "literals", "arguments"}) {
             Map<String, ?> map = getInternalMap(node, fn, null);
-            if (map == null) {
-                if (log != null) log.warn("[TC][reflect] removeFromAllMaps: field '{}' not accessible", fn);
-                continue;
-            }
-            int before = map.size();
+            if (map == null) continue;
             try {
                 map.keySet().removeAll(names);
             } catch (UnsupportedOperationException e) {
-                // Map is unmodifiable — remove one-by-one via iterator
                 Iterator<String> it = map.keySet().iterator();
                 while (it.hasNext()) {
                     if (names.contains(it.next())) {
@@ -280,7 +192,6 @@ public class VelocityNativeListener {
                     }
                 }
             }
-            if (log != null) log.info("[TC][reflect] field '{}': {} -> {} entries", fn, before, map.size());
         }
     }
 
