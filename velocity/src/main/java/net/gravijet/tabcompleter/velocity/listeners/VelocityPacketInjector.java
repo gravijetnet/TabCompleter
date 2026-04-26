@@ -40,8 +40,8 @@ public class VelocityPacketInjector {
     // Possible field names for the Channel inside MinecraftConnection.
     private static final String[] CHAN_FIELD_NAMES = {"channel", "ch", "nettyChannel"};
 
-    // Log first N writes per player so we can see ALL packet class names flowing through.
-    static final int MAX_WRITE_LOGS = 200;
+    // Write log limit (0 = disabled).
+    static final int MAX_WRITE_LOGS = 0;
 
     private final VelocityMain plugin;
 
