@@ -20,17 +20,11 @@ public class VelocityCommandListener {
         if (!(event.getCommandSource() instanceof Player)) return;
 
         Player player = (Player) event.getCommandSource();
-        boolean bypass = hasBypass(player);
-        plugin.getLogger().info("[TC][Cmd] CommandExecuteEvent: cmd='{}' player={} bypass={}",
-                event.getCommand(), player.getUsername(), bypass);
-        if (bypass) return;
+        if (hasBypass(player)) return;
 
         String cmd = event.getCommand().split(" ", 2)[0].toLowerCase();
-        boolean visible = CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission);
-        plugin.getLogger().info("[TC][Cmd] '{}' visible={}", cmd, visible);
-        if (visible) return;
+        if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
 
-        plugin.getLogger().info("[TC][Cmd] Blocking command '{}' for player={}", cmd, player.getUsername());
         event.setResult(CommandExecuteEvent.CommandResult.denied());
         player.sendMessage(LegacyComponentSerializer.legacyAmpersand()
                 .deserialize(plugin.getPluginConfig().getPrefix()
