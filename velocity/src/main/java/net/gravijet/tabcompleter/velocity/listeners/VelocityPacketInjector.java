@@ -40,8 +40,8 @@ public class VelocityPacketInjector {
     // Possible field names for the Channel inside MinecraftConnection.
     private static final String[] CHAN_FIELD_NAMES = {"channel", "ch", "nettyChannel"};
 
-    // Write log limit (0 = disabled).
-    static final int MAX_WRITE_LOGS = 0;
+    // Write log limit — set to 0 to silence, >0 to log first N writes per inject.
+    static final int MAX_WRITE_LOGS = 30;
 
     private final VelocityMain plugin;
 
@@ -214,17 +214,28 @@ public class VelocityPacketInjector {
             super.write(ctx, msg, promise);
         }
 
-        private static boolean isCommandPacket(Object msg) {
+        private boolean isCommandPacket(Object msg) {
             String name = msg.getClass().getSimpleName();
+            String fullName = msg.getClass().getName();
             // Name-based check (covers most Velocity versions)
-            if (name.contains("AvailableCommands") || name.contains("DeclareCommands") || name.equals("CommandsPacket")) {
+            if (name.contains("AvailableCommands") || name.contains("DeclareCommands")
+                    || name.equals("CommandsPacket") || name.equals("Commands")
+                    || fullName.contains("availablecommands") || fullName.contains("declarecommands")) {
                 return true;
             }
             // Reflection fallback: if any field of type RootCommandNode exists, treat as command packet
             for (Class<?> c = msg.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
-                    if (f.getType().getSimpleName().contains("RootCommandNode")) return true;
+                    String typeName = f.getType().getSimpleName();
+                    if (typeName.contains("RootCommandNode") || typeName.contains("CommandNode")) {
+                        return true;
+                    }
                 }
+            }
+            // If class name suggests commands, log it so we can add an explicit check.
+            if (name.toLowerCase().contains("command")) {
+                plugin.getLogger().warn("[TC][Netty] Possible command packet NOT matched: class='{}' player={}",
+                        msg.getClass().getName(), player.getUsername());
             }
             return false;
         }
