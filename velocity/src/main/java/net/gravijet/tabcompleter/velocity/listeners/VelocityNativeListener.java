@@ -67,6 +67,7 @@ public class VelocityNativeListener {
     }
 
     // Runs last to ensure our filter is applied after other listeners have populated suggestions.
+    // This fires for both modern (1.13+) and legacy (pre-1.13) clients.
     @Subscribe(order = PostOrder.LAST)
     public void onTabComplete(TabCompleteEvent event) {
         Player player = event.getPlayer();
@@ -77,22 +78,38 @@ public class VelocityNativeListener {
 
         String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
 
+        List<String> live = event.getSuggestions();
+
         if (afterSlash.contains(" ")) {
             String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
-                event.getSuggestions().clear();
+                tryClear(live);
             }
         } else {
+            // Build a copy of what should remain visible.
             List<String> filtered = new ArrayList<>();
-            for (String text : event.getSuggestions()) {
+            for (String text : live) {
                 String name = text.startsWith("/") ? text.substring(1) : text;
-                if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)) {
+                if (CommandFilter.isCommandVisibleToPlayer(
+                        plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)) {
                     filtered.add(text);
                 }
             }
-            event.getSuggestions().clear();
-            event.getSuggestions().addAll(filtered);
+            // Replace in place; tryClear + addAll handles unmodifiable list gracefully.
+            tryClear(live);
+            try {
+                live.addAll(filtered);
+            } catch (UnsupportedOperationException ignored) {
+                // list is still unmodifiable — the packet-level interceptor in
+                // VelocityPacketInjector will catch this as the safety net.
+            }
         }
+    }
+
+    private static void tryClear(List<String> list) {
+        try {
+            list.clear();
+        } catch (UnsupportedOperationException ignored) {}
     }
 
     boolean hasBypass(Player player) {
