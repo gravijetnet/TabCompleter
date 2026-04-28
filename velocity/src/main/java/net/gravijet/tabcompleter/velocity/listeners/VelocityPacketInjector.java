@@ -200,12 +200,15 @@ public class VelocityPacketInjector {
         /**
          * Matches Velocity's internal packet class for the legacy (pre-1.13)
          * tab-complete response sent from the proxy to the client.
-         * Typical class names: "TabCompleteResponse", "LegacyTabCompleteResponse".
+         * In write() all packets are outbound (proxy→client), so any "tabcomplete"
+         * class that is NOT a request is a response. We exclude "request" in the name
+         * to avoid matching TabCompleteRequest if it ever appears here.
+         * Typical class names: "TabCompleteResponse", "LegacyTabCompleteResponse",
+         * or simply "TabComplete" (bidirectional class in some Velocity versions).
          */
         private boolean isLegacyTabCompleteResponse(Object msg) {
-            String simple = msg.getClass().getSimpleName();
-            String lower  = simple.toLowerCase();
-            return lower.contains("tabcomplete") && lower.contains("response");
+            String lower = msg.getClass().getSimpleName().toLowerCase();
+            return lower.contains("tabcomplete") && !lower.contains("request");
         }
 
         // ------------------------------------------------------------------
@@ -235,14 +238,14 @@ public class VelocityPacketInjector {
                     // else: command is allowed — leave argument suggestions intact.
                 } else {
                     // Command-name completion (e.g. "/he<TAB>").
-                    List<String> filtered = buildFilteredCommandList(ref.list);
+                    List filtered = buildFilteredCommandList(ref.list);
                     applyReplacement(packet, ref, filtered);
                 }
             } else if (req != null) {
                 // No leading slash: player-name / argument context — do not filter.
             } else {
                 // No stored request: conservatively filter command-like entries.
-                List<String> filtered = buildFilteredCommandList(ref.list);
+                List filtered = buildFilteredCommandList(ref.list);
                 applyReplacement(packet, ref, filtered);
             }
         }
@@ -251,9 +254,10 @@ public class VelocityPacketInjector {
          * Applies the replacement list to the packet's suggestion list.
          * First tries in-place mutation; if the list is unmodifiable, sets the
          * field on the packet to a fresh ArrayList.
+         * Works for both {@code List<String>} and {@code List<Offer>}.
          */
         @SuppressWarnings({"unchecked", "rawtypes"})
-        private static void applyReplacement(Object packet, StringListRef ref, List<String> replacement) {
+        private static void applyReplacement(Object packet, StringListRef ref, List replacement) {
             List live = ref.list;
             try {
                 live.clear();
@@ -266,12 +270,36 @@ public class VelocityPacketInjector {
             }
         }
 
+        /**
+         * Extracts the display text from a suggestion element.
+         * Handles both plain {@code String} entries and Velocity's internal
+         * {@code Offer} objects (which wrap a {@code value} String field).
+         */
+        private static String extractElementText(Object element) {
+            if (element instanceof String) return (String) element;
+            // Offer-like objects: find the first non-null String field (typically "value").
+            for (Class<?> c = element.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (f.getType() != String.class) continue;
+                    try {
+                        f.setAccessible(true);
+                        String val = (String) f.get(element);
+                        if (val != null) return val;
+                    } catch (Exception ignored) {}
+                }
+            }
+            return null;
+        }
+
         @SuppressWarnings({"unchecked", "rawtypes"})
-        private List<String> buildFilteredCommandList(List original) {
-            List<String> kept = new ArrayList<>();
+        private List buildFilteredCommandList(List original) {
+            List kept = new ArrayList<>();
             for (Object entry : original) {
-                if (!(entry instanceof String)) continue;
-                String text = (String) entry;
+                String text = extractElementText(entry);
+                if (text == null) {
+                    kept.add(entry); // keep unknown entries unchanged
+                    continue;
+                }
                 String name = text.startsWith("/") ? text.substring(1) : text;
                 // Accept both "name" and "namespace:name" forms.
                 String baseName = name.contains(":") ? name.split(":", 2)[1] : name;
@@ -279,7 +307,7 @@ public class VelocityPacketInjector {
                         plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)
                     || CommandFilter.isCommandVisibleToPlayer(
                         plugin.getPluginConfig(), baseName.toLowerCase(), player::hasPermission)) {
-                    kept.add(text);
+                    kept.add(entry);
                 }
             }
             return kept;
@@ -302,11 +330,14 @@ public class VelocityPacketInjector {
 
         /**
          * Walks the class hierarchy of a packet object and returns the first
-         * accessible List field that contains String elements (or is empty),
-         * together with the Field itself so we can replace the reference if needed.
+         * accessible List field that contains String elements (or is empty).
+         * If no {@code List<String>} is found, falls back to the first non-null
+         * List field — this covers Velocity versions that store suggestions as
+         * {@code List<Offer>} (where each Offer wraps a value String).
          */
         @SuppressWarnings({"unchecked", "rawtypes"})
         private static StringListRef findStringListRef(Object packet) {
+            StringListRef fallback = null;
             for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     if (!List.class.isAssignableFrom(f.getType())) continue;
@@ -316,12 +347,15 @@ public class VelocityPacketInjector {
                         if (!(val instanceof List)) continue;
                         List list = (List) val;
                         if (list.isEmpty() || list.get(0) instanceof String) {
-                            return new StringListRef(f, list);
+                            return new StringListRef(f, list); // prefer List<String>
+                        }
+                        if (fallback == null) {
+                            fallback = new StringListRef(f, list); // remember first Offer-like list
                         }
                     } catch (Exception ignored) {}
                 }
             }
-            return null;
+            return fallback;
         }
 
         // ------------------------------------------------------------------
