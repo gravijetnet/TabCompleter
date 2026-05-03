@@ -6,6 +6,10 @@ bypass-permission: tabcompleter.bypass
 reload-permission: tabcompleter.reload
 no-permission-message: "&cThis command does not exist."
 
+# Custom server brand shown in the F3 debug screen. Leave empty to keep the default.
+# Supports color codes with & (e.g. "&cexample.invalid").
+server-brand: "&cexample.invalid"
+
 # allowlist: only the listed commands are visible/usable for players without a group permission.
 # blocklist: only the listed commands are hidden/blocked for players without a group permission.
 # Default is allowlist — with an empty commands list, ungrouped players see nothing.

@@ -10,6 +10,7 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.velocity.command.TabCompleterCommand;
+import net.gravijet.tabcompleter.velocity.listeners.VelocityBrandListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityCommandListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityNativeListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityPacketInjector;
@@ -99,6 +100,7 @@ public class VelocityMain {
         server.getEventManager().register(this, new VelocityCommandListener(this));
         server.getEventManager().register(this, new VelocityNativeListener(this));
         server.getEventManager().register(this, new VelocityPacketInjector(this));
+        server.getEventManager().register(this, new VelocityBrandListener(this));
     }
 
     public static VelocityMain getInstance()  { return instance; }
