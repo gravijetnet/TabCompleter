@@ -8,7 +8,8 @@ no-permission-message: "&cThis command does not exist."
 
 # Custom server brand shown in the F3 debug screen. Leave empty to keep the default.
 # Supports color codes with & (e.g. "&cgravijet.net").
-server-brand: "&cgravijet.net"
+server-brand: "&cgravijet.net&f&r"
+
 
 # Commands blocked for all players (those without the bypass permission).
 # Blocking "friend" also blocks "essentials:friend" and all other namespace variants.
