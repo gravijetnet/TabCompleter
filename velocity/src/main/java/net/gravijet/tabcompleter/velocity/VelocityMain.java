@@ -8,6 +8,7 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import net.gravijet.tabcompleter.core.ConfigLoader;
+import net.gravijet.tabcompleter.core.ConfigUpdater;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.velocity.command.TabCompleterCommand;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityBrandListener;
@@ -16,6 +17,7 @@ import net.gravijet.tabcompleter.velocity.listeners.VelocityNativeListener;
 import net.gravijet.tabcompleter.velocity.listeners.VelocityPacketInjector;
 import org.slf4j.Logger;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -81,8 +83,12 @@ public class VelocityMain {
     }
 
     public void loadConfiguration() {
+        File configFile = dataDirectory.resolve("config.yml").toFile();
         try {
-            pluginConfig = ConfigLoader.loadProxy(dataDirectory.resolve("config.yml").toFile());
+            ConfigUpdater.update(configFile,
+                    getClass().getResourceAsStream("/config.yml"),
+                    msg -> logger.info(msg));
+            pluginConfig = ConfigLoader.loadProxy(configFile);
         } catch (IOException e) {
             logger.error("Failed to load config.yml: {}", e.getMessage());
             try (InputStream in = getClass().getResourceAsStream("/config.yml")) {
