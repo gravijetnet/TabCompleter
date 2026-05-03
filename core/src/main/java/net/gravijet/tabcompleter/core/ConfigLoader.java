@@ -72,7 +72,9 @@ public final class ConfigLoader {
             groups = parseGroups(data);
         }
 
-        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, cmds, mode, groups);
+        String serverBrand = str(data, "server-brand", "");
+
+        return new PluginConfig(prefix, bypassPerm, reloadPerm, noPermMsg, cmds, mode, groups, serverBrand);
     }
 
     @SuppressWarnings("unchecked")

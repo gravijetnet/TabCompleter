@@ -1,6 +1,7 @@
 package net.gravijet.tabcompleter.bungeecord;
 
 import net.gravijet.tabcompleter.bungeecord.command.TabCompleterCommand;
+import net.gravijet.tabcompleter.bungeecord.listeners.BungeeBrandListener;
 import net.gravijet.tabcompleter.bungeecord.listeners.BungeeChatListener;
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
@@ -59,6 +60,7 @@ public class BungeeMain extends Plugin {
     private void registerListeners() {
         getProxy().getPluginManager().unregisterListeners(this);
         getProxy().getPluginManager().registerListener(this, new BungeeChatListener(this));
+        getProxy().getPluginManager().registerListener(this, new BungeeBrandListener(this));
         getProxy().getPluginManager().unregisterCommands(this);
         getProxy().getPluginManager().registerCommand(this, new TabCompleterCommand(this));
     }

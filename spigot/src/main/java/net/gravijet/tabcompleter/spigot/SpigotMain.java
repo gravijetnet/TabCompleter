@@ -4,6 +4,7 @@ import com.github.retrooper.packetevents.PacketEvents;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.PluginConfig;
+import net.gravijet.tabcompleter.spigot.listeners.BrandListener;
 import net.gravijet.tabcompleter.spigot.listeners.CustomTabCompleter;
 import net.gravijet.tabcompleter.spigot.listeners.ModernCommandSendListener;
 import net.gravijet.tabcompleter.spigot.listeners.TabListener;
@@ -25,6 +26,7 @@ public class SpigotMain extends JavaPlugin {
     private TabListener tabListener;
     private TabPacketListener tabPacketListener;
     private Listener modernCommandSendListener;
+    private Listener brandListener;
 
     @Override
     public void onLoad() {
@@ -41,6 +43,8 @@ public class SpigotMain extends JavaPlugin {
         saveDefaultConfig();
         loadConfiguration();
         PacketEvents.getAPI().init();
+        getServer().getMessenger().registerOutgoingPluginChannel(this, "minecraft:brand");
+        getServer().getMessenger().registerOutgoingPluginChannel(this, "MC|Brand");
         registerListeners();
         getLogger().info("TabCompleter v" + getDescription().getVersion() + " enabled.");
     }
@@ -66,12 +70,16 @@ public class SpigotMain extends JavaPlugin {
     private void registerListeners() {
         if (tabListener != null) HandlerList.unregisterAll(tabListener);
         if (modernCommandSendListener != null) HandlerList.unregisterAll(modernCommandSendListener);
+        if (brandListener != null) HandlerList.unregisterAll(brandListener);
         if (tabPacketListener != null) {
             PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
         }
 
         tabListener = new TabListener(this);
         getServer().getPluginManager().registerEvents(tabListener, this);
+
+        brandListener = new BrandListener(this);
+        getServer().getPluginManager().registerEvents(brandListener, this);
 
         if (isClassAvailable("org.bukkit.event.player.PlayerCommandSendEvent")) {
             registerModernCommandSendListener();

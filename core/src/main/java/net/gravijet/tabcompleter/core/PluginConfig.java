@@ -13,6 +13,7 @@ public final class PluginConfig {
     private final List<String> blockedCommands;
     private final String spigotMode;
     private final Map<String, GroupConfig> groups;
+    private final String serverBrand;
 
     public PluginConfig(String prefix,
                         String bypassPermission,
@@ -20,7 +21,8 @@ public final class PluginConfig {
                         String noPermissionMessage,
                         List<String> blockedCommands,
                         String spigotMode,
-                        Map<String, GroupConfig> groups) {
+                        Map<String, GroupConfig> groups,
+                        String serverBrand) {
         this.prefix              = prefix;
         this.bypassPermission    = bypassPermission;
         this.reloadPermission    = reloadPermission;
@@ -28,6 +30,7 @@ public final class PluginConfig {
         this.blockedCommands     = Collections.unmodifiableList(blockedCommands);
         this.spigotMode          = spigotMode;
         this.groups              = Collections.unmodifiableMap(groups);
+        this.serverBrand         = serverBrand;
     }
 
     public String getPrefix()                    { return prefix; }
@@ -37,4 +40,6 @@ public final class PluginConfig {
     public List<String> getBlockedCommands()     { return blockedCommands; }
     public String getSpigotMode()                { return spigotMode; }
     public Map<String, GroupConfig> getGroups()  { return groups; }
+    /** Returns the custom server brand for the F3 screen, or empty string if not configured. */
+    public String getServerBrand()               { return serverBrand != null ? serverBrand : ""; }
 }
