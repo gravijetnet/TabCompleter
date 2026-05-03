@@ -4,6 +4,7 @@ import net.gravijet.tabcompleter.bungeecord.command.TabCompleterCommand;
 import net.gravijet.tabcompleter.bungeecord.listeners.BungeeBrandListener;
 import net.gravijet.tabcompleter.bungeecord.listeners.BungeeChatListener;
 import net.gravijet.tabcompleter.core.ConfigLoader;
+import net.gravijet.tabcompleter.core.ConfigUpdater;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.plugin.Plugin;
@@ -45,8 +46,12 @@ public class BungeeMain extends Plugin {
     }
 
     public void loadConfiguration() {
+        File configFile = new File(getDataFolder(), "config.yml");
         try {
-            pluginConfig = ConfigLoader.loadProxy(new File(getDataFolder(), "config.yml"));
+            ConfigUpdater.update(configFile,
+                    getResourceAsStream("config.yml"),
+                    msg -> getLogger().info(msg));
+            pluginConfig = ConfigLoader.loadProxy(configFile);
         } catch (IOException e) {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
             try (InputStream in = getResourceAsStream("config.yml")) {

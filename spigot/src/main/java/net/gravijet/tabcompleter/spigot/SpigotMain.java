@@ -3,6 +3,7 @@ package net.gravijet.tabcompleter.spigot;
 import com.github.retrooper.packetevents.PacketEvents;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import net.gravijet.tabcompleter.core.ConfigLoader;
+import net.gravijet.tabcompleter.core.ConfigUpdater;
 import net.gravijet.tabcompleter.core.PluginConfig;
 import net.gravijet.tabcompleter.spigot.listeners.BrandListener;
 import net.gravijet.tabcompleter.spigot.listeners.CustomTabCompleter;
@@ -59,8 +60,12 @@ public class SpigotMain extends JavaPlugin {
 
     public void loadConfiguration() {
         reloadConfig();
+        File configFile = new File(getDataFolder(), "config.yml");
         try {
-            pluginConfig = ConfigLoader.load(new File(getDataFolder(), "config.yml"));
+            ConfigUpdater.update(configFile,
+                    getClass().getResourceAsStream("/config.yml"),
+                    msg -> getLogger().info(msg));
+            pluginConfig = ConfigLoader.load(configFile);
         } catch (IOException e) {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
             pluginConfig = ConfigLoader.loadFromStream(getClass().getResourceAsStream("/config.yml"));
