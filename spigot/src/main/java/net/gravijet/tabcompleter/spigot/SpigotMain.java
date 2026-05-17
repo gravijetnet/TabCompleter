@@ -22,8 +22,8 @@ import java.io.IOException;
 
 public class SpigotMain extends JavaPlugin {
 
-    private static SpigotMain instance;
-    private PluginConfig pluginConfig;
+    private static volatile SpigotMain instance;
+    private volatile PluginConfig pluginConfig;
     private TabListener tabListener;
     private TabPacketListener tabPacketListener;
     private Listener modernCommandSendListener;
@@ -44,8 +44,10 @@ public class SpigotMain extends JavaPlugin {
         saveDefaultConfig();
         loadConfiguration();
         PacketEvents.getAPI().init();
-        getServer().getMessenger().registerOutgoingPluginChannel(this, "minecraft:brand");
-        getServer().getMessenger().registerOutgoingPluginChannel(this, "MC|Brand");
+        registerBrandChannel("minecraft:brand");
+        // Legacy channel name; rejected by modern Bukkit's channel validation.
+        // A failure here must not abort plugin startup.
+        registerBrandChannel("MC|Brand");
         registerListeners();
         getLogger().info("TabCompleter v" + getDescription().getVersion() + " enabled.");
     }
@@ -95,6 +97,14 @@ public class SpigotMain extends JavaPlugin {
 
         if (getCommand("tabcompleter") != null) {
             getCommand("tabcompleter").setTabCompleter(new CustomTabCompleter(this));
+        }
+    }
+
+    private void registerBrandChannel(String channel) {
+        try {
+            getServer().getMessenger().registerOutgoingPluginChannel(this, channel);
+        } catch (RuntimeException e) {
+            getLogger().fine("Brand channel '" + channel + "' not registered: " + e.getMessage());
         }
     }
 

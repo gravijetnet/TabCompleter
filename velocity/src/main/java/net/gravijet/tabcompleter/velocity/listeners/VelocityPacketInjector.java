@@ -15,6 +15,7 @@ import net.gravijet.tabcompleter.velocity.VelocityMain;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 public class VelocityPacketInjector {
 
@@ -155,7 +156,7 @@ public class VelocityPacketInjector {
                 if (partial != null && !partial.isEmpty()) {
                     String afterSlash = partial.startsWith("/") ? partial.substring(1) : partial;
                     if (afterSlash.contains(" ")) {
-                        String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+                        String baseCmd = afterSlash.split(" ", 2)[0];
                         if (!CommandFilter.isCommandVisibleToPlayer(
                                 plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                             // Drop the request — client will receive no suggestions.
@@ -230,7 +231,7 @@ public class VelocityPacketInjector {
                 String afterSlash = req.substring(1);
                 if (afterSlash.contains(" ")) {
                     // Argument completion for a specific command.
-                    String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+                    String baseCmd = afterSlash.split(" ", 2)[0];
                     if (!CommandFilter.isCommandVisibleToPlayer(
                             plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                         applyReplacement(packet, ref, new ArrayList<>());
@@ -294,6 +295,8 @@ public class VelocityPacketInjector {
         @SuppressWarnings({"unchecked", "rawtypes"})
         private List buildFilteredCommandList(List original) {
             List kept = new ArrayList<>();
+            Predicate<String> visible =
+                    CommandFilter.resolve(plugin.getPluginConfig(), player::hasPermission);
             for (Object entry : original) {
                 String text = extractElementText(entry);
                 if (text == null) {
@@ -303,10 +306,7 @@ public class VelocityPacketInjector {
                 String name = text.startsWith("/") ? text.substring(1) : text;
                 // Accept both "name" and "namespace:name" forms.
                 String baseName = name.contains(":") ? name.split(":", 2)[1] : name;
-                if (CommandFilter.isCommandVisibleToPlayer(
-                        plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)
-                    || CommandFilter.isCommandVisibleToPlayer(
-                        plugin.getPluginConfig(), baseName.toLowerCase(), player::hasPermission)) {
+                if (visible.test(name) || visible.test(baseName)) {
                     kept.add(entry);
                 }
             }

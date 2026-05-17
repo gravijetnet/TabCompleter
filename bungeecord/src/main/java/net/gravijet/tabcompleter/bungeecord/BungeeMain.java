@@ -16,8 +16,8 @@ import java.nio.file.Files;
 
 public class BungeeMain extends Plugin {
 
-    private static BungeeMain instance;
-    private PluginConfig pluginConfig;
+    private static volatile BungeeMain instance;
+    private volatile PluginConfig pluginConfig;
 
     @Override
     public void onEnable() {

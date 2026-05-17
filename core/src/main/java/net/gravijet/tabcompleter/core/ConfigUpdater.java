@@ -41,6 +41,10 @@ public final class ConfigUpdater {
      * @return true if the file was modified
      */
     public static boolean update(File file, InputStream defaultStream, Consumer<String> log) throws IOException {
+        if (defaultStream == null) {
+            // No bundled default available — nothing to migrate or back-fill.
+            return false;
+        }
         String userText;
         try (InputStream in = new FileInputStream(file)) {
             userText = readAll(in);
