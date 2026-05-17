@@ -33,7 +33,7 @@ public class TabListener implements Listener {
         String message = event.getMessage();
         if (message == null || !message.startsWith("/")) return;
 
-        String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
+        String cmd = message.substring(1).split(" ", 2)[0];
         if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
 
         event.setCancelled(true);

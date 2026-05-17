@@ -2,6 +2,7 @@ package net.gravijet.tabcompleter.core;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -10,12 +11,22 @@ public final class CommandFilter {
     private CommandFilter() {}
 
     /**
-     * Returns true if the command is visible/allowed for a player.
-     * If groups are configured and the player has at least one group permission,
-     * only commands in their groups (including inherited) are allowed.
-     * Otherwise falls back to mode/blocked-commands logic.
+     * Lowercases using a fixed locale. Using the JVM default locale here is a bug:
+     * on a Turkish/Azeri server {@code "LIST".toLowerCase()} yields {@code "lıst"}
+     * (dotless i), which no longer matches the configured {@code list} entry.
      */
-    public static boolean isCommandVisibleToPlayer(PluginConfig config, String cmd, Predicate<String> hasPermission) {
+    private static String lower(String s) {
+        return s.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Resolves the visibility rule for a single player <em>once</em> so it can be
+     * reused across many command checks (e.g. filtering a whole command list).
+     * This avoids re-evaluating group permissions and rebuilding the allowed-command
+     * set for every single command, which previously happened per command per
+     * keystroke during tab completion.
+     */
+    public static Predicate<String> resolve(PluginConfig config, Predicate<String> hasPermission) {
         if (!config.getGroups().isEmpty()) {
             boolean hasAnyGroup = false;
             for (GroupConfig g : config.getGroups().values()) {
@@ -30,13 +41,22 @@ public final class CommandFilter {
                 // regardless of which group they are in (allowlist mode only).
                 if ("allowlist".equalsIgnoreCase(config.getSpigotMode())) {
                     for (String c : config.getBlockedCommands()) {
-                        allowed.add(c.toLowerCase());
+                        allowed.add(lower(c));
                     }
                 }
-                return isCommandInSet(allowed, cmd.toLowerCase());
+                return cmd -> isCommandInSet(allowed, lower(cmd));
             }
         }
-        return !isCommandFiltered(config, cmd);
+        return cmd -> !isCommandFiltered(config, cmd);
+    }
+
+    /**
+     * Returns true if the command is visible/allowed for a player.
+     * Convenience for single checks; for bulk filtering call {@link #resolve}
+     * once and reuse the returned predicate.
+     */
+    public static boolean isCommandVisibleToPlayer(PluginConfig config, String cmd, Predicate<String> hasPermission) {
+        return resolve(config, hasPermission).test(cmd);
     }
 
     private static Set<String> collectAllowedCommands(PluginConfig config, Predicate<String> hasPermission) {
@@ -53,7 +73,7 @@ public final class CommandFilter {
     private static void collectGroupCommands(PluginConfig config, GroupConfig group, Set<String> result, Set<String> visited) {
         if (!visited.add(group.getName())) return;
         for (String cmd : group.getCommands()) {
-            result.add(cmd.toLowerCase());
+            result.add(lower(cmd));
         }
         for (String inheritName : group.getInherits()) {
             GroupConfig inherited = config.getGroups().get(inheritName);
@@ -76,7 +96,7 @@ public final class CommandFilter {
 
     /** Returns true if the command should be blocked (pure blocklist check, namespace-prefix only). */
     public static boolean isCommandBlocked(PluginConfig config, String cmd) {
-        String lower = cmd.toLowerCase();
+        String lower = lower(cmd);
         for (String blocked : config.getBlockedCommands()) {
             if (blocked.equalsIgnoreCase(lower)) return true;
             // namespace prefix: blocking "essentials" also blocks "essentials:friend"
@@ -92,7 +112,7 @@ public final class CommandFilter {
      * Whitelisting "essentials" DOES allow "essentials:friend" (namespace prefix).
      */
     private static boolean isCommandInAllowList(List<String> list, String cmd) {
-        String lower = cmd.toLowerCase();
+        String lower = lower(cmd);
         for (String entry : list) {
             if (entry.equalsIgnoreCase(lower)) return true;
             if (lower.contains(":") && entry.equalsIgnoreCase(lower.split(":", 2)[0])) return true;

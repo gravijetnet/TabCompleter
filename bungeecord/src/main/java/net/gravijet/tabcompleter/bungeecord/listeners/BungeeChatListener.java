@@ -36,7 +36,7 @@ public class BungeeChatListener implements Listener {
         String message = event.getMessage();
         if (message == null || !message.startsWith("/")) return;
 
-        String cmd = message.substring(1).split(" ", 2)[0].toLowerCase();
+        String cmd = message.substring(1).split(" ", 2)[0];
 
         if (!CommandFilter.isCommandBlocked(plugin.getPluginConfig(), cmd)) return;
 
@@ -62,7 +62,7 @@ public class BungeeChatListener implements Listener {
 
         if (afterSlash.contains(" ")) {
             // Argument completion — block entirely if base command is blocked.
-            String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+            String baseCmd = afterSlash.split(" ", 2)[0];
             if (CommandFilter.isCommandBlocked(plugin.getPluginConfig(), baseCmd)) {
                 event.setCancelled(true);
             }
@@ -70,7 +70,7 @@ public class BungeeChatListener implements Listener {
             // Command name completion — remove blocked suggestions individually.
             event.getSuggestions().removeIf(suggestion -> {
                 String name = suggestion.startsWith("/") ? suggestion.substring(1) : suggestion;
-                return CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name.toLowerCase());
+                return CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name);
             });
         }
     }

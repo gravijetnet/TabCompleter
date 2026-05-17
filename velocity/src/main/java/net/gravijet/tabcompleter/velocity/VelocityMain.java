@@ -32,12 +32,12 @@ import java.nio.file.Path;
 )
 public class VelocityMain {
 
-    private static VelocityMain instance;
+    private static volatile VelocityMain instance;
 
     private final ProxyServer server;
     private final Logger logger;
     private final Path dataDirectory;
-    private PluginConfig pluginConfig;
+    private volatile PluginConfig pluginConfig;
 
     @Inject
     public VelocityMain(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
