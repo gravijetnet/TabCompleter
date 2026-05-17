@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 public class TabPacketListener extends PacketListenerAbstract {
 
@@ -38,7 +39,7 @@ public class TabPacketListener extends PacketListenerAbstract {
         String afterSlash = text.substring(1);
 
         if (afterSlash.contains(" ")) {
-            String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+            String baseCmd = afterSlash.split(" ", 2)[0];
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 event.setCancelled(true);
             }
@@ -60,10 +61,11 @@ public class TabPacketListener extends PacketListenerAbstract {
 
         List<WrapperPlayServerTabComplete.CommandMatch> filtered = new ArrayList<>();
         boolean changed = false;
+        Predicate<String> visible = CommandFilter.resolve(plugin.getPluginConfig(), player::hasPermission);
         for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
             String text = match.getText();
             String name = text.startsWith("/") ? text.substring(1) : text;
-            if (!name.contains(" ") && !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), name, player::hasPermission)) {
+            if (!name.contains(" ") && !visible.test(name)) {
                 changed = true;
             } else {
                 filtered.add(match);

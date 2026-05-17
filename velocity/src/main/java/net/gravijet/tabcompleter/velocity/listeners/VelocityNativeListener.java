@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.function.Predicate;
 
 public class VelocityNativeListener {
 
@@ -81,17 +82,17 @@ public class VelocityNativeListener {
         List<String> live = event.getSuggestions();
 
         if (afterSlash.contains(" ")) {
-            String baseCmd = afterSlash.split(" ", 2)[0].toLowerCase();
+            String baseCmd = afterSlash.split(" ", 2)[0];
             if (!CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), baseCmd, player::hasPermission)) {
                 tryClear(live);
             }
         } else {
             // Build a copy of what should remain visible.
+            Predicate<String> visible = CommandFilter.resolve(plugin.getPluginConfig(), player::hasPermission);
             List<String> filtered = new ArrayList<>();
             for (String text : live) {
                 String name = text.startsWith("/") ? text.substring(1) : text;
-                if (CommandFilter.isCommandVisibleToPlayer(
-                        plugin.getPluginConfig(), name.toLowerCase(), player::hasPermission)) {
+                if (visible.test(name)) {
                     filtered.add(text);
                 }
             }
@@ -134,18 +135,20 @@ public class VelocityNativeListener {
             return;
         }
 
+        Predicate<String> visible = CommandFilter.resolve(config, player::hasPermission);
+
         Map<String, Object> childrenMap = getInternalMap(rootObj, "children", null);
 
         if (childrenMap == null) {
             if (instanceOfCheck) {
-                filterRootFallback((RootCommandNode) rootObj, player, config);
+                filterRootFallback((RootCommandNode) rootObj, visible);
             }
             return;
         }
 
         Set<String> toRemove = new LinkedHashSet<>();
         for (String name : new ArrayList<>(childrenMap.keySet())) {
-            if (!CommandFilter.isCommandVisibleToPlayer(config, name.toLowerCase(), player::hasPermission)) {
+            if (!visible.test(name)) {
                 toRemove.add(name);
             }
         }
@@ -160,10 +163,10 @@ public class VelocityNativeListener {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static void filterRootFallback(RootCommandNode root, Player player, PluginConfig config) {
+    private static void filterRootFallback(RootCommandNode root, Predicate<String> visible) {
         List<CommandNode> toKeep = new ArrayList<>();
         for (CommandNode child : new ArrayList<CommandNode>(root.getChildren())) {
-            if (CommandFilter.isCommandVisibleToPlayer(config, child.getName().toLowerCase(), player::hasPermission)) {
+            if (visible.test(child.getName())) {
                 toKeep.add(child);
             }
         }

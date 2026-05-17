@@ -8,6 +8,8 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandSendEvent;
 
+import java.util.function.Predicate;
+
 public class ModernCommandSendListener implements Listener {
 
     private final SpigotMain plugin;
@@ -22,7 +24,7 @@ public class ModernCommandSendListener implements Listener {
         String perm = plugin.getPluginConfig().getBypassPermission();
         if (player.hasPermission(perm) || player.hasPermission("*")) return;
 
-        event.getCommands().removeIf(cmd ->
-                !CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission));
+        Predicate<String> visible = CommandFilter.resolve(plugin.getPluginConfig(), player::hasPermission);
+        event.getCommands().removeIf(cmd -> !visible.test(cmd));
     }
 }
