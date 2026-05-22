@@ -22,7 +22,10 @@ public class VelocityCommandListener {
         Player player = (Player) event.getCommandSource();
         if (hasBypass(player)) return;
 
-        String cmd = event.getCommand().split(" ", 2)[0];
+        // BUG-22: guard against null command string
+        String rawCmd = event.getCommand();
+        if (rawCmd == null) return;
+        String cmd = rawCmd.split(" ", 2)[0];
         if (CommandFilter.isCommandVisibleToPlayer(plugin.getPluginConfig(), cmd, player::hasPermission)) return;
 
         event.setResult(CommandExecuteEvent.CommandResult.denied());

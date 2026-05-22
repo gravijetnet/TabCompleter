@@ -28,8 +28,9 @@ public class TabPacketListener extends PacketListenerAbstract {
     public void onPacketReceive(PacketReceiveEvent event) {
         if (event.getPacketType() != PacketType.Play.Client.TAB_COMPLETE) return;
 
+        // BUG-14: use instanceof rather than a blind cast; getPlayer() can return non-Player on some PacketEvents versions
+        if (!(event.getPlayer() instanceof Player)) return;
         Player player = (Player) event.getPlayer();
-        if (player == null) return;
         if (hasBypass(player)) return;
 
         WrapperPlayClientTabComplete clientPacket = new WrapperPlayClientTabComplete(event);
@@ -51,8 +52,9 @@ public class TabPacketListener extends PacketListenerAbstract {
     public void onPacketSend(PacketSendEvent event) {
         if (event.getPacketType() != PacketType.Play.Server.TAB_COMPLETE) return;
 
+        // BUG-14: use instanceof guard on send path as well
+        if (!(event.getPlayer() instanceof Player)) return;
         Player player = (Player) event.getPlayer();
-        if (player == null) return;
         if (hasBypass(player)) return;
 
         WrapperPlayServerTabComplete wrapper = new WrapperPlayServerTabComplete(event);
@@ -65,11 +67,18 @@ public class TabPacketListener extends PacketListenerAbstract {
         for (WrapperPlayServerTabComplete.CommandMatch match : matches) {
             String text = match.getText();
             String name = text.startsWith("/") ? text.substring(1) : text;
-            if (!name.contains(" ") && !visible.test(name)) {
+            if (name.contains(" ")) {
+                // BUG-15: argument completion — filter based on the base command visibility
+                String baseCmd = name.split(" ", 2)[0];
+                if (!visible.test(baseCmd)) {
+                    changed = true;
+                    continue;
+                }
+            } else if (!visible.test(name)) {
                 changed = true;
-            } else {
-                filtered.add(match);
+                continue;
             }
+            filtered.add(match);
         }
 
         if (changed) {

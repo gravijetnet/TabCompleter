@@ -23,7 +23,7 @@ public final class ConfigLoader {
         }
     }
 
-    /** Load for Spigot from stream. */
+    /** Load for Spigot from stream. Returns an empty (pass-all) config if {@code in} is null. */
     public static PluginConfig loadFromStream(InputStream in) {
         return loadInternal(in, false);
     }
@@ -89,7 +89,12 @@ public final class ConfigLoader {
             String name = String.valueOf(entry.getKey());
             if (!(entry.getValue() instanceof Map)) continue;
 
-            Map<String, Object> groupData = (Map<String, Object>) entry.getValue();
+            // BUG-09: cast via raw Map then build a safe String-keyed view to avoid heap pollution
+            Map<?, ?> rawGroupData = (Map<?, ?>) entry.getValue();
+            Map<String, Object> groupData = new java.util.LinkedHashMap<>();
+            for (Map.Entry<?, ?> ge : rawGroupData.entrySet()) {
+                groupData.put(String.valueOf(ge.getKey()), ge.getValue());
+            }
             String permission = str(groupData, "permission", "tabcompleter.group." + name);
             List<String> commands = strList(groupData, "commands");
             List<String> inherits = strList(groupData, "inherits");

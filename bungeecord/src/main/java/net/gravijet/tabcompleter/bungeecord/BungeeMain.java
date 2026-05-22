@@ -21,10 +21,11 @@ public class BungeeMain extends Plugin {
 
     @Override
     public void onEnable() {
-        instance = this;
         saveDefaultConfig();
         loadConfiguration();
         registerListeners();
+        // BUG-16: set instance only after full initialisation
+        instance = this;
         getLogger().info("TabCompleter v" + getDescription().getVersion() + " enabled.");
     }
 
@@ -54,8 +55,14 @@ public class BungeeMain extends Plugin {
             pluginConfig = ConfigLoader.loadProxy(configFile);
         } catch (IOException e) {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
+            // BUG-17: ensure pluginConfig is always set; warn explicitly if bundled resource is missing
             try (InputStream in = getResourceAsStream("config.yml")) {
-                if (in != null) pluginConfig = ConfigLoader.loadProxyFromStream(in);
+                if (in != null) {
+                    pluginConfig = ConfigLoader.loadProxyFromStream(in);
+                } else {
+                    getLogger().severe("Bundled config.yml not found in JAR — filtering will be disabled!");
+                    pluginConfig = ConfigLoader.loadProxyFromStream(null);
+                }
             } catch (IOException ex) {
                 throw new RuntimeException("Cannot load config", ex);
             }
@@ -63,11 +70,16 @@ public class BungeeMain extends Plugin {
     }
 
     private void registerListeners() {
+        // BUG-18: construct new listeners before unregistering the old ones to minimise
+        // the window during which no listener is active on reload.
+        BungeeChatListener chatListener   = new BungeeChatListener(this);
+        BungeeBrandListener brandListener = new BungeeBrandListener(this);
+        TabCompleterCommand command       = new TabCompleterCommand(this);
         getProxy().getPluginManager().unregisterListeners(this);
-        getProxy().getPluginManager().registerListener(this, new BungeeChatListener(this));
-        getProxy().getPluginManager().registerListener(this, new BungeeBrandListener(this));
+        getProxy().getPluginManager().registerListener(this, chatListener);
+        getProxy().getPluginManager().registerListener(this, brandListener);
         getProxy().getPluginManager().unregisterCommands(this);
-        getProxy().getPluginManager().registerCommand(this, new TabCompleterCommand(this));
+        getProxy().getPluginManager().registerCommand(this, command);
     }
 
     public static BungeeMain getInstance() { return instance; }

@@ -4,6 +4,9 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -87,9 +90,14 @@ public final class ConfigUpdater {
         }
 
         if (modified) {
-            try (Writer w = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
+            // BUG-07: write to a temp file then atomically rename so a mid-write crash
+            // never leaves the config file empty or truncated.
+            Path target = file.toPath();
+            Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+            try (Writer w = new OutputStreamWriter(new FileOutputStream(tmp.toFile()), StandardCharsets.UTF_8)) {
                 w.write(userText);
             }
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         }
         return modified;
     }
@@ -109,15 +117,12 @@ public final class ConfigUpdater {
         }
         if (keyLine == -1) return "";
 
-        // Walk backwards to collect comment / blank lines that precede the key
+        // BUG-06: walk backwards only over comment lines; stop at the first blank line
+        // so we don't pull trailing blanks that visually belong to the previous key.
         int start = keyLine;
-        while (start > 0) {
-            String prev = lines[start - 1];
-            if (prev.startsWith("#") || prev.trim().isEmpty()) start--;
-            else break;
-        }
-        // Drop any leading blank lines from the collected range
-        while (start < keyLine && lines[start].trim().isEmpty()) start++;
+        while (start > 0 && lines[start - 1].startsWith("#")) start--;
+        // Allow a single blank separator line immediately before the comment block.
+        if (start > 0 && lines[start - 1].trim().isEmpty()) start--;
 
         // Walk forwards past indented continuation lines (list items, sub-keys, etc.)
         int end = keyLine + 1;
@@ -146,8 +151,10 @@ public final class ConfigUpdater {
     private static boolean isTopLevelKeyLine(String line, String key) {
         if (line.length() <= key.length()) return false;
         if (!line.startsWith(key)) return false;
+        // BUG-05: only ':' is the valid separator — a bare space could be a false positive
+        // (e.g. a value line that starts with the key name followed by a space).
         char next = line.charAt(key.length());
-        return next == ':' || next == ' ';
+        return next == ':';
     }
 
     @SuppressWarnings("unchecked")
@@ -162,6 +169,6 @@ public final class ConfigUpdater {
         byte[] tmp = new byte[4096];
         int n;
         while ((n = in.read(tmp)) != -1) buf.write(tmp, 0, n);
-        return buf.toString(StandardCharsets.UTF_8.name());
+        return new String(buf.toByteArray(), StandardCharsets.UTF_8);
     }
 }

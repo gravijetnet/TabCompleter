@@ -40,7 +40,7 @@ public final class CommandFilter {
                 // Global 'commands' list acts as a base that all players can access,
                 // regardless of which group they are in (allowlist mode only).
                 if ("allowlist".equalsIgnoreCase(config.getSpigotMode())) {
-                    for (String c : config.getBlockedCommands()) {
+                    for (String c : config.getCommands()) {
                         allowed.add(lower(c));
                     }
                 }
@@ -97,11 +97,12 @@ public final class CommandFilter {
     /** Returns true if the command should be blocked (pure blocklist check, namespace-prefix only). */
     public static boolean isCommandBlocked(PluginConfig config, String cmd) {
         String lower = lower(cmd);
-        for (String blocked : config.getBlockedCommands()) {
-            if (blocked.equalsIgnoreCase(lower)) return true;
+        for (String blocked : config.getCommands()) {
+            // BUG-02: both sides lowercased with Locale.ROOT for consistent comparison
+            if (lower(blocked).equals(lower)) return true;
             // namespace prefix: blocking "essentials" also blocks "essentials:friend"
             // but blocking "friend" does NOT block "essentials:friend"
-            if (lower.contains(":") && blocked.equalsIgnoreCase(lower.split(":", 2)[0])) return true;
+            if (lower.contains(":") && lower(blocked).equals(lower.split(":", 2)[0])) return true;
         }
         return false;
     }
@@ -114,8 +115,9 @@ public final class CommandFilter {
     private static boolean isCommandInAllowList(List<String> list, String cmd) {
         String lower = lower(cmd);
         for (String entry : list) {
-            if (entry.equalsIgnoreCase(lower)) return true;
-            if (lower.contains(":") && entry.equalsIgnoreCase(lower.split(":", 2)[0])) return true;
+            // BUG-03: both sides lowercased with Locale.ROOT for consistent comparison
+            if (lower(entry).equals(lower)) return true;
+            if (lower.contains(":") && lower(entry).equals(lower.split(":", 2)[0])) return true;
         }
         return false;
     }
@@ -126,6 +128,6 @@ public final class CommandFilter {
             return isCommandBlocked(config, cmd);
         }
         // Allowlist mode: only exact or namespace-prefix match — no suffix match.
-        return !isCommandInAllowList(config.getBlockedCommands(), cmd);
+        return !isCommandInAllowList(config.getCommands(), cmd);
     }
 }

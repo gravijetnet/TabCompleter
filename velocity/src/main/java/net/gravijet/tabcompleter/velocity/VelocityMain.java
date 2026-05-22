@@ -44,6 +44,9 @@ public class VelocityMain {
         this.server        = server;
         this.logger        = logger;
         this.dataDirectory = dataDirectory;
+        // BUG-20: instance set here (constructor) for Velocity's injection model; pluginConfig
+        // is not yet loaded, so callers must not access getPluginConfig() until onProxyInitialize completes.
+        // This is unavoidable with Velocity's @Inject pattern — mitigated by the volatile field.
         instance = this;
     }
 
@@ -91,9 +94,13 @@ public class VelocityMain {
             pluginConfig = ConfigLoader.loadProxy(configFile);
         } catch (IOException e) {
             logger.error("Failed to load config.yml: {}", e.getMessage());
+            // BUG-21: always assign pluginConfig; warn explicitly if bundled resource is missing
             try (InputStream in = getClass().getResourceAsStream("/config.yml")) {
                 if (in != null) {
                     pluginConfig = ConfigLoader.loadProxyFromStream(in);
+                } else {
+                    logger.error("Bundled config.yml not found in JAR — filtering will be disabled!");
+                    pluginConfig = ConfigLoader.loadProxyFromStream(null);
                 }
             } catch (IOException ex) {
                 throw new RuntimeException("Cannot load config", ex);

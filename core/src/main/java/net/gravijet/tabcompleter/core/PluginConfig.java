@@ -10,7 +10,10 @@ public final class PluginConfig {
     private final String bypassPermission;
     private final String reloadPermission;
     private final String noPermissionMessage;
-    private final List<String> blockedCommands;
+    // BUG-01: renamed from blockedCommands — this list holds the global commands list
+    // whose semantic depends on mode: in allowlist mode it is the allowed-commands list,
+    // in blocklist mode it is the blocked-commands list.
+    private final List<String> commands;
     private final String spigotMode;
     private final Map<String, GroupConfig> groups;
     private final String serverBrand;
@@ -19,7 +22,7 @@ public final class PluginConfig {
                         String bypassPermission,
                         String reloadPermission,
                         String noPermissionMessage,
-                        List<String> blockedCommands,
+                        List<String> commands,
                         String spigotMode,
                         Map<String, GroupConfig> groups,
                         String serverBrand) {
@@ -27,7 +30,7 @@ public final class PluginConfig {
         this.bypassPermission    = bypassPermission;
         this.reloadPermission    = reloadPermission;
         this.noPermissionMessage = noPermissionMessage;
-        this.blockedCommands     = Collections.unmodifiableList(blockedCommands);
+        this.commands            = Collections.unmodifiableList(commands);
         this.spigotMode          = spigotMode;
         this.groups              = Collections.unmodifiableMap(groups);
         this.serverBrand         = serverBrand;
@@ -37,7 +40,8 @@ public final class PluginConfig {
     public String getBypassPermission()          { return bypassPermission; }
     public String getReloadPermission()          { return reloadPermission; }
     public String getNoPermissionMessage()       { return noPermissionMessage; }
-    public List<String> getBlockedCommands()     { return blockedCommands; }
+    /** Returns the global commands list. Semantics depend on mode: allowlist = allowed cmds, blocklist = blocked cmds. */
+    public List<String> getCommands()            { return commands; }
     public String getSpigotMode()                { return spigotMode; }
     public Map<String, GroupConfig> getGroups()  { return groups; }
     /** Returns the custom server brand for the F3 screen, or empty string if not configured. */

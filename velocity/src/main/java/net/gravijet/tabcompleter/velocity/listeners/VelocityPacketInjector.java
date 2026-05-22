@@ -43,8 +43,14 @@ public class VelocityPacketInjector {
     @Subscribe
     public void onDisconnect(DisconnectEvent event) {
         Channel ch = getChannel(event.getPlayer());
-        if (ch != null && ch.pipeline().get(HANDLER_NAME) != null) {
-            ch.pipeline().remove(HANDLER_NAME);
+        if (ch == null) return;
+        // BUG-32: pipeline modifications must run on the channel's event loop to be thread-safe
+        if (ch.eventLoop().inEventLoop()) {
+            if (ch.pipeline().get(HANDLER_NAME) != null) ch.pipeline().remove(HANDLER_NAME);
+        } else {
+            ch.eventLoop().execute(() -> {
+                if (ch.pipeline().get(HANDLER_NAME) != null) ch.pipeline().remove(HANDLER_NAME);
+            });
         }
     }
 
@@ -55,27 +61,33 @@ public class VelocityPacketInjector {
             return;
         }
 
-        if (channel.pipeline().get(HANDLER_NAME) != null) {
-            channel.pipeline().remove(HANDLER_NAME);
-        }
-
-        CommandPacketHandler handler = new CommandPacketHandler(plugin, player);
-
-        for (String before : INJECT_BEFORE) {
-            if (channel.pipeline().get(before) != null) {
-                channel.pipeline().addBefore(before, HANDLER_NAME, handler);
-                return;
+        // BUG-27: wrap in try-catch — a concurrent inject() call (PostLoginEvent + ServerPostConnectEvent)
+        // can cause addBefore/addAfter to throw IllegalArgumentException if the handler was already added.
+        try {
+            if (channel.pipeline().get(HANDLER_NAME) != null) {
+                channel.pipeline().remove(HANDLER_NAME);
             }
-        }
 
-        for (String name : channel.pipeline().names()) {
-            if (name.contains("encoder")) {
-                channel.pipeline().addAfter(name, HANDLER_NAME, handler);
-                return;
+            CommandPacketHandler handler = new CommandPacketHandler(plugin, player);
+
+            for (String before : INJECT_BEFORE) {
+                if (channel.pipeline().get(before) != null) {
+                    channel.pipeline().addBefore(before, HANDLER_NAME, handler);
+                    return;
+                }
             }
-        }
 
-        plugin.getLogger().warn("[TC] No injection point found for {}.", player.getUsername());
+            for (String name : channel.pipeline().names()) {
+                if (name.contains("encoder")) {
+                    channel.pipeline().addAfter(name, HANDLER_NAME, handler);
+                    return;
+                }
+            }
+
+            plugin.getLogger().warn("[TC] No injection point found for {}.", player.getUsername());
+        } catch (Exception e) {
+            plugin.getLogger().warn("[TC] Pipeline injection failed for {}: {}", player.getUsername(), e.toString());
+        }
     }
 
     private static Field findField(Class<?> clazz, String name) {
@@ -114,7 +126,10 @@ public class VelocityPacketInjector {
             return null;
 
         } catch (Exception e) {
-            plugin.getLogger().warn("[TC] getChannel error for {}: {}", player.getUsername(), e.toString());
+            // BUG-33: include exception type in the message to distinguish InaccessibleObjectException
+            // (Java 16+ module encapsulation) from other reflection failures.
+            plugin.getLogger().warn("[TC] getChannel error for {} ({}): {}",
+                    player.getUsername(), e.getClass().getSimpleName(), e.getMessage());
             return null;
         }
     }
@@ -267,7 +282,11 @@ public class VelocityPacketInjector {
                 // List is unmodifiable — replace the field reference on the packet.
                 try {
                     ref.field.set(packet, new ArrayList<>(replacement));
-                } catch (Exception ignored) {}
+                } catch (Exception ex) {
+                    // BUG-28: log — silent bypass is a security issue (player sees blocked commands)
+                    System.err.println("[TabCompleter] WARNING: Could not replace suggestion list on "
+                            + packet.getClass().getSimpleName() + " — commands may leak: " + ex);
+                }
             }
         }
 
@@ -304,9 +323,9 @@ public class VelocityPacketInjector {
                     continue;
                 }
                 String name = text.startsWith("/") ? text.substring(1) : text;
-                // Accept both "name" and "namespace:name" forms.
-                String baseName = name.contains(":") ? name.split(":", 2)[1] : name;
-                if (visible.test(name) || visible.test(baseName)) {
+                // BUG-26: only test the full name (and namespace prefix via CommandFilter);
+                // testing the suffix after ':' incorrectly allows "evil:help" when "help" is allowed.
+                if (visible.test(name)) {
                     kept.add(entry);
                 }
             }
@@ -370,10 +389,11 @@ public class VelocityPacketInjector {
                     || fullName.contains("availablecommands") || fullName.contains("declarecommands")) {
                 return true;
             }
+            // BUG-29: only match RootCommandNode specifically (not generic CommandNode fields)
+            // to avoid false-positives on unrelated packets that happen to hold a CommandNode.
             for (Class<?> c = msg.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
-                    String typeName = f.getType().getSimpleName();
-                    if (typeName.contains("RootCommandNode") || typeName.contains("CommandNode")) {
+                    if (f.getType().getSimpleName().contains("RootCommandNode")) {
                         return true;
                     }
                 }
@@ -406,17 +426,25 @@ public class VelocityPacketInjector {
         }
 
         private String extractPartialCommand(Object packet) {
+            // BUG-30: prefer fields whose name indicates they hold the partial command text
+            // before falling back to the first non-empty String to avoid returning e.g. a transaction ID.
+            String fallback = null;
             for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     if (f.getType() != String.class) continue;
                     try {
                         f.setAccessible(true);
                         String val = (String) f.get(packet);
-                        if (val != null && !val.isEmpty()) return val;
+                        if (val == null || val.isEmpty()) continue;
+                        String fn = f.getName().toLowerCase();
+                        if (fn.contains("text") || fn.contains("command") || fn.contains("partial") || fn.contains("input")) {
+                            return val;
+                        }
+                        if (fallback == null) fallback = val;
                     } catch (Exception ignored) {}
                 }
             }
-            return null;
+            return fallback;
         }
 
         private static Field findRootField(Class<?> startClass) {

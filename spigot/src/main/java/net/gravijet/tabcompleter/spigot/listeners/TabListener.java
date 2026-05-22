@@ -21,7 +21,10 @@ public class TabListener implements Listener {
         cancelIfFiltered(event, false);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    // BUG-13: ignoreCancelled = true so we don't send a no-permission message when
+    // another plugin already cancelled the event for an unrelated reason.
+    // We still run at HIGHEST to re-cancel if another plugin un-cancelled between LOWEST and HIGHEST.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onCommandHighest(PlayerCommandPreprocessEvent event) {
         cancelIfFiltered(event, true);
     }

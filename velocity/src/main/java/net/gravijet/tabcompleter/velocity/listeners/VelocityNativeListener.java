@@ -46,7 +46,9 @@ public class VelocityNativeListener {
     public void onServerPostConnect(ServerPostConnectEvent event) {
         Player player = event.getPlayer();
         if (hasBypass(player)) return;
+        // BUG-23: log a warning if every candidate method fails so the issue is diagnosable
         String[] candidates = {"sendAvailableCommands", "sendCommandList", "sendPlayerCommands", "sendCommandTree", "sendCommands"};
+        Exception lastError = null;
         for (String methodName : candidates) {
             Method m = findMethod(player.getClass(), methodName);
             if (m != null) {
@@ -54,9 +56,13 @@ public class VelocityNativeListener {
                     m.setAccessible(true);
                     m.invoke(player);
                     return;
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    lastError = e;
+                }
             }
         }
+        plugin.getLogger().warn("[TC] Could not refresh command list for {}: {}", player.getUsername(),
+                lastError != null ? lastError.toString() : "no candidate method found");
     }
 
     private static Method findMethod(Class<?> clazz, String name) {
@@ -171,13 +177,15 @@ public class VelocityNativeListener {
             }
         }
 
+        // BUG-24: never call root.getChildren().clear() — it may return an unmodifiable view
+        // or a live collection shared with other listeners. Always go through reflection maps.
         boolean clearedViaReflection = false;
         for (String fn : new String[]{"children", "literals", "arguments"}) {
             Map<?, ?> m = getInternalMap(root, fn, null);
-            if (m != null) { m.clear(); clearedViaReflection = true; }
-        }
-        if (!clearedViaReflection) {
-            try { root.getChildren().clear(); } catch (Exception ignored) {}
+            if (m != null) {
+                try { m.clear(); clearedViaReflection = true; }
+                catch (UnsupportedOperationException ignored) {}
+            }
         }
 
         for (CommandNode child : toKeep) root.addChild(child);
@@ -205,10 +213,15 @@ public class VelocityNativeListener {
             try {
                 map.keySet().removeAll(names);
             } catch (UnsupportedOperationException e) {
+                // BUG-25: fall back to iterator remove; log if that also fails (commands may leak)
                 Iterator<String> it = map.keySet().iterator();
                 while (it.hasNext()) {
                     if (names.contains(it.next())) {
-                        try { it.remove(); } catch (UnsupportedOperationException ignored) {}
+                        try {
+                            it.remove();
+                        } catch (UnsupportedOperationException ex) {
+                            if (log != null) log.warn("[TC] Cannot remove commands from '{}' map — commands may leak through filter", fn);
+                        }
                     }
                 }
             }
