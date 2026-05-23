@@ -53,6 +53,11 @@ public final class ConfigUpdater {
             // No bundled default available — nothing to migrate or back-fill.
             return false;
         }
+
+        // Clean up any orphaned temp file from a previous crashed run.
+        Path staleTmp = file.toPath().resolveSibling(file.getName() + ".tmp");
+        Files.deleteIfExists(staleTmp);
+
         String userText;
         try (InputStream in = new FileInputStream(file)) {
             userText = readAll(in);
@@ -81,13 +86,15 @@ public final class ConfigUpdater {
         if (modified) userData = parseMap(userText);
 
         // --- Append missing top-level keys ---
+        // Track appended keys locally to avoid re-parsing the full YAML on every iteration.
+        Set<String> appendedKeys = new HashSet<>();
         for (String key : defaultData.keySet()) {
-            if (!userData.containsKey(key)) {
+            if (!userData.containsKey(key) && !appendedKeys.contains(key)) {
                 String block = extractBlock(defaultText, key);
                 if (!block.isEmpty()) {
                     if (!userText.endsWith("\n")) userText += "\n";
                     userText += "\n" + block;
-                    userData = parseMap(userText); // keep map in sync for subsequent checks
+                    appendedKeys.add(key);
                     log.accept("Added missing config key '" + key + "' with default value.");
                     modified = true;
                 }
@@ -136,7 +143,7 @@ public final class ConfigUpdater {
         // (which visually belongs to this key, not the previous one).
         // Guard: only include it if the line before that is NOT also blank, to avoid
         // pulling in double-blank-line separators that belong to the previous block.
-        if (start > 0 && lines[start - 1].trim().isEmpty()
+        if (start > 0 && (start - 1) > 0 && lines[start - 1].trim().isEmpty()
                 && (start < 2 || !lines[start - 2].trim().isEmpty())) {
             start--;
         }
@@ -160,7 +167,7 @@ public final class ConfigUpdater {
     private static String renameTopLevelKey(String text, String oldKey, String newKey) {
         return text.replaceFirst(
             "(?m)^" + java.util.regex.Pattern.quote(oldKey) + "(?=\\s*:)",
-            newKey
+            java.util.regex.Matcher.quoteReplacement(newKey)
         );
     }
 

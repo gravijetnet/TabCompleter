@@ -59,8 +59,7 @@ public class BungeeMain extends Plugin {
                 if (in != null) {
                     pluginConfig = ConfigLoader.loadProxyFromStream(in);
                 } else {
-                    getLogger().severe("Bundled config.yml not found in JAR — filtering will be disabled!");
-                    pluginConfig = ConfigLoader.loadProxyFromStream(null);
+                    throw new RuntimeException("Bundled config.yml not found in JAR — cannot start safely.");
                 }
             } catch (IOException ex) {
                 throw new RuntimeException("Cannot load config", ex);

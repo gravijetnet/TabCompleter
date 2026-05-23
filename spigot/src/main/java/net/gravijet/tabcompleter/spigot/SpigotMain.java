@@ -73,19 +73,19 @@ public class SpigotMain extends JavaPlugin {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
             InputStream fallback = getClass().getResourceAsStream("/config.yml");
             if (fallback == null) {
-                getLogger().severe("Bundled config.yml not found in JAR — filtering will be disabled!");
+                throw new RuntimeException("Bundled config.yml not found in JAR — cannot start safely.");
             }
             pluginConfig = ConfigLoader.loadFromStream(fallback);
         }
     }
 
     private void registerListeners() {
-        if (tabListener != null) HandlerList.unregisterAll(tabListener);
-        if (modernCommandSendListener != null) HandlerList.unregisterAll(modernCommandSendListener);
-        if (brandListener != null) HandlerList.unregisterAll(brandListener);
-        if (tabPacketListener != null && PacketEvents.getAPI() != null) {
-            PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
-        }
+        // Capture old listeners to unregister AFTER new ones are in place,
+        // eliminating the window where no listener is registered.
+        TabListener oldTab = tabListener;
+        Listener oldModern = modernCommandSendListener;
+        Listener oldBrand = brandListener;
+        TabPacketListener oldPacket = tabPacketListener;
 
         tabListener = new TabListener(this);
         getServer().getPluginManager().registerEvents(tabListener, this);
@@ -94,7 +94,10 @@ public class SpigotMain extends JavaPlugin {
         getServer().getPluginManager().registerEvents(brandListener, this);
 
         if (isClassAvailable("org.bukkit.event.player.PlayerCommandSendEvent")) {
-            registerModernCommandSendListener();
+            modernCommandSendListener = new ModernCommandSendListener(this);
+            getServer().getPluginManager().registerEvents(modernCommandSendListener, this);
+        } else {
+            modernCommandSendListener = null;
         }
 
         tabPacketListener = new TabPacketListener(this);
@@ -106,6 +109,14 @@ public class SpigotMain extends JavaPlugin {
         if (cmd != null) {
             cmd.setTabCompleter(new CustomTabCompleter(this));
         }
+
+        // Unregister old listeners now that new ones are active.
+        if (oldTab != null) HandlerList.unregisterAll(oldTab);
+        if (oldModern != null) HandlerList.unregisterAll(oldModern);
+        if (oldBrand != null) HandlerList.unregisterAll(oldBrand);
+        if (oldPacket != null && PacketEvents.getAPI() != null) {
+            PacketEvents.getAPI().getEventManager().unregisterListener(oldPacket);
+        }
     }
 
     private void registerBrandChannel(String channel) {
@@ -114,11 +125,6 @@ public class SpigotMain extends JavaPlugin {
         } catch (RuntimeException e) {
             getLogger().fine("Brand channel '" + channel + "' not registered: " + e.getMessage());
         }
-    }
-
-    private void registerModernCommandSendListener() {
-        modernCommandSendListener = new ModernCommandSendListener(this);
-        getServer().getPluginManager().registerEvents(modernCommandSendListener, this);
     }
 
     private static boolean isClassAvailable(String className) {
@@ -146,6 +152,10 @@ public class SpigotMain extends JavaPlugin {
             return true;
         }
 
+        if (!sender.hasPermission(pluginConfig.getReloadPermission())) {
+            sender.sendMessage(prefix + ChatColor.RED + "No permission.");
+            return true;
+        }
         sender.sendMessage(prefix + ChatColor.GOLD + "TabCompleter v"
                 + getDescription().getVersion() + " by gravijet.");
         sender.sendMessage(prefix + ChatColor.GOLD + "Usage: /tabcompleter reload");

@@ -3,7 +3,6 @@ package net.gravijet.tabcompleter.velocity.listeners;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
-import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
@@ -15,6 +14,7 @@ import net.gravijet.tabcompleter.velocity.VelocityMain;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
@@ -27,17 +27,15 @@ public class VelocityPacketInjector {
 
     private final VelocityMain plugin;
 
+    private static final ConcurrentHashMap<Class<?>, Optional<Field>> CONN_FIELD_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, Optional<Field>> CHAN_FIELD_CACHE = new ConcurrentHashMap<>();
+
     public VelocityPacketInjector(VelocityMain plugin) {
         this.plugin = plugin;
     }
 
     @Subscribe
     public void onPostLogin(PostLoginEvent event) {
-        inject(event.getPlayer());
-    }
-
-    @Subscribe
-    public void onServerPostConnect(ServerPostConnectEvent event) {
         inject(event.getPlayer());
     }
 
@@ -109,22 +107,41 @@ public class VelocityPacketInjector {
     Channel getChannel(Player player) {
         try {
             Object conn = null;
-            for (String fieldName : CONN_FIELD_NAMES) {
-                Field f = findField(player.getClass(), fieldName);
-                if (f == null) continue;
+            Class<?> playerClass = player.getClass();
+            Optional<Field> cachedConnField = CONN_FIELD_CACHE.get(playerClass);
+            if (cachedConnField == null) {
+                Field found = null;
+                for (String fieldName : CONN_FIELD_NAMES) {
+                    Field f = findField(playerClass, fieldName);
+                    if (f != null) { found = f; break; }
+                }
+                cachedConnField = Optional.ofNullable(found);
+                CONN_FIELD_CACHE.put(playerClass, cachedConnField);
+            }
+            if (cachedConnField.isPresent()) {
+                Field f = cachedConnField.get();
                 f.setAccessible(true);
-                Object val = f.get(player);
-                if (val != null) { conn = val; break; }
+                conn = f.get(player);
             }
 
             if (conn == null) {
-                plugin.getLogger().warn("[TC] Could not find connection field in {}.", player.getClass().getName());
+                plugin.getLogger().warn("[TC] Could not find connection field in {}.", playerClass.getName());
                 return null;
             }
 
-            for (String fieldName : CHAN_FIELD_NAMES) {
-                Field f = findField(conn.getClass(), fieldName);
-                if (f == null) continue;
+            Class<?> connClass = conn.getClass();
+            Optional<Field> cachedChanField = CHAN_FIELD_CACHE.get(connClass);
+            if (cachedChanField == null) {
+                Field found = null;
+                for (String fieldName : CHAN_FIELD_NAMES) {
+                    Field f = findField(connClass, fieldName);
+                    if (f != null) { found = f; break; }
+                }
+                cachedChanField = Optional.ofNullable(found);
+                CHAN_FIELD_CACHE.put(connClass, cachedChanField);
+            }
+            if (cachedChanField.isPresent()) {
+                Field f = cachedChanField.get();
                 f.setAccessible(true);
                 Object val = f.get(conn);
                 if (val instanceof Channel) return (Channel) val;
@@ -232,7 +249,8 @@ public class VelocityPacketInjector {
          */
         private boolean isLegacyTabCompleteResponse(Object msg) {
             String lower = msg.getClass().getSimpleName().toLowerCase();
-            return lower.contains("tabcomplete") && !lower.contains("request");
+            return lower.contains("tabcomplete") && !lower.contains("request")
+                    && !lower.contains("available") && !lower.contains("declare");
         }
 
         // ------------------------------------------------------------------
@@ -397,16 +415,8 @@ public class VelocityPacketInjector {
                     || fullName.contains("availablecommands") || fullName.contains("declarecommands")) {
                 return true;
             }
-            // Only match RootCommandNode exactly to avoid false-positives on unrelated
-            // packets that happen to hold a CommandNode subclass.
-            for (Class<?> c = msg.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (Field f : c.getDeclaredFields()) {
-                    if ("RootCommandNode".equals(f.getType().getSimpleName())) {
-                        return true;
-                    }
-                }
-            }
-            return false;
+            // Use the cached field lookup to check for a RootCommandNode field.
+            return findRootField(msg.getClass()) != null;
         }
 
         private void filterModernCommandPacket(Object packet) {
@@ -435,10 +445,9 @@ public class VelocityPacketInjector {
 
         private String extractPartialCommand(Object packet) {
             // Prefer fields whose name indicates they hold the partial command text.
-            // Only fall back to the first non-empty String field when no named match is found,
-            // and log a debug warning so operators know the fallback was used.
-            String fallbackValue = null;
-            String fallbackFieldName = null;
+            // If no named match is found, return null so the caller uses the conservative
+            // "no stored request" branch rather than guessing from an unknown field.
+            boolean hasAnyStringField = false;
             for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     if (f.getType() != String.class) continue;
@@ -450,32 +459,22 @@ public class VelocityPacketInjector {
                         if (fn.contains("text") || fn.contains("command") || fn.contains("partial") || fn.contains("input")) {
                             return val;
                         }
-                        if (fallbackValue == null) {
-                            fallbackValue = val;
-                            fallbackFieldName = f.getName();
-                        }
+                        hasAnyStringField = true;
                     } catch (Exception ignored) {}
                 }
             }
-            if (fallbackValue != null) {
-                plugin.getLogger().debug("[TC] extractPartialCommand: falling back to field '{}' on {} — may be inaccurate",
-                        fallbackFieldName, packet.getClass().getSimpleName());
+            if (hasAnyStringField) {
+                plugin.getLogger().debug("[TC] extractPartialCommand: no named command field found on {}; treating as unknown context",
+                        packet.getClass().getSimpleName());
             }
-            return fallbackValue;
+            return null;
         }
 
-        private static final ConcurrentHashMap<Class<?>, Field> ROOT_FIELD_CACHE = new ConcurrentHashMap<>();
-        private static final Field ROOT_FIELD_ABSENT = findSentinelField();
-
-        private static Field findSentinelField() {
-            try { return Object.class.getDeclaredField("does_not_exist_sentinel"); }
-            catch (NoSuchFieldException e) { return null; }
-        }
+        private static final ConcurrentHashMap<Class<?>, Optional<Field>> ROOT_FIELD_CACHE = new ConcurrentHashMap<>();
 
         private static Field findRootField(Class<?> startClass) {
-            Field cached = ROOT_FIELD_CACHE.get(startClass);
-            if (cached == ROOT_FIELD_ABSENT) return null;
-            if (cached != null) return cached;
+            Optional<Field> cached = ROOT_FIELD_CACHE.get(startClass);
+            if (cached != null) return cached.orElse(null);
 
             Field found = null;
             outer:
@@ -493,7 +492,7 @@ public class VelocityPacketInjector {
                     }
                 }
             }
-            ROOT_FIELD_CACHE.put(startClass, found != null ? found : ROOT_FIELD_ABSENT);
+            ROOT_FIELD_CACHE.put(startClass, Optional.ofNullable(found));
             return found;
         }
     }

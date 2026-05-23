@@ -25,6 +25,10 @@ public class ModernCommandSendListener implements Listener {
         if (player.hasPermission(perm) || player.hasPermission("*")) return;
 
         Predicate<String> visible = CommandFilter.resolve(plugin.getPluginConfig(), player::hasPermission);
-        event.getCommands().removeIf(cmd -> !visible.test(cmd));
+        try {
+            event.getCommands().removeIf(cmd -> !visible.test(cmd));
+        } catch (UnsupportedOperationException ignored) {
+            // getCommands() returned an unmodifiable collection on this server build; filtering skipped.
+        }
     }
 }

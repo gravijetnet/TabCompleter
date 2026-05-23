@@ -33,7 +33,7 @@ public final class PluginConfig {
         this.commands            = Collections.unmodifiableList(commands);
         this.spigotMode          = spigotMode;
         this.groups              = Collections.unmodifiableMap(groups);
-        this.serverBrand         = serverBrand;
+        this.serverBrand         = serverBrand != null ? serverBrand : "";
     }
 
     public String getPrefix()                    { return prefix; }
@@ -45,5 +45,5 @@ public final class PluginConfig {
     public String getSpigotMode()                { return spigotMode; }
     public Map<String, GroupConfig> getGroups()  { return groups; }
     /** Returns the custom server brand for the F3 screen, or empty string if not configured. */
-    public String getServerBrand()               { return serverBrand != null ? serverBrand : ""; }
+    public String getServerBrand()               { return serverBrand; }
 }

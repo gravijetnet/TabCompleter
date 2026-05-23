@@ -34,8 +34,13 @@ public class TabCompleterCommand implements SimpleCommand {
             return;
         }
 
+        if (!source.hasPermission(plugin.getPluginConfig().getReloadPermission())) {
+            source.sendMessage(LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize(prefix + "&cNo permission."));
+            return;
+        }
         source.sendMessage(LegacyComponentSerializer.legacyAmpersand()
-                .deserialize(prefix + "&6TabCompleter v2.0 by gravijet."));
+                .deserialize(prefix + "&6TabCompleter v" + VelocityMain.PLUGIN_VERSION + " by gravijet."));
         source.sendMessage(LegacyComponentSerializer.legacyAmpersand()
                 .deserialize(prefix + "&6Usage: /velocitytabcompleter reload"));
     }

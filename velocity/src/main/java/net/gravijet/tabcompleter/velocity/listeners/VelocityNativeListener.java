@@ -70,6 +70,7 @@ public class VelocityNativeListener {
     }
 
     private static Method findMethod(Class<?> clazz, String name) {
+        // Intentionally searches for zero-argument methods only; all candidate names are zero-arg send methods.
         while (clazz != null) {
             try { return clazz.getDeclaredMethod(name); }
             catch (NoSuchMethodException ignored) { clazz = clazz.getSuperclass(); }
@@ -106,13 +107,13 @@ public class VelocityNativeListener {
                     filtered.add(text);
                 }
             }
-            // Replace in place; tryClear + addAll handles unmodifiable list gracefully.
-            tryClear(live);
+            // Replace in place. If the list is unmodifiable, log once so operators know
+            // to rely on the VelocityPacketInjector safety net instead.
             try {
+                live.clear();
                 live.addAll(filtered);
             } catch (UnsupportedOperationException ignored) {
-                // list is still unmodifiable — the packet-level interceptor in
-                // VelocityPacketInjector will catch this as the safety net.
+                plugin.getLogger().debug("[TC] TabCompleteEvent suggestion list is unmodifiable; relying on packet-level filter.");
             }
         }
     }
@@ -161,7 +162,7 @@ public class VelocityNativeListener {
         }
 
         Set<String> toRemove = new LinkedHashSet<>();
-        for (String name : new ArrayList<>(childrenMap.keySet())) {
+        for (String name : childrenMap.keySet()) {
             if (!visible.test(name)) {
                 toRemove.add(name);
             }
@@ -185,21 +186,24 @@ public class VelocityNativeListener {
             }
         }
 
-        // Clear every internal map (children, literals, arguments) before re-adding allowed nodes.
-        // Never call root.getChildren().clear() — it may return an unmodifiable view.
-        // Track whether ALL maps were cleared; if any failed, blocked commands in that map may leak.
+        boolean allCleared = true;
         for (String fn : new String[]{"children", "literals", "arguments"}) {
             Map<?, ?> m = getInternalMap(root, fn, log);
             if (m != null) {
                 try {
                     m.clear();
                 } catch (UnsupportedOperationException e) {
+                    allCleared = false;
                     if (log != null) log.warn("[TC] filterRootFallback: could not clear '{}' map — blocked commands may leak", fn);
                 }
             }
         }
 
-        for (CommandNode child : toKeep) root.addChild(child);
+        if (allCleared) {
+            for (CommandNode child : toKeep) root.addChild(child);
+        } else if (log != null) {
+            log.warn("[TC] filterRootFallback: skipping re-add because not all maps were cleared — command list may be incomplete");
+        }
     }
 
     @SuppressWarnings("unchecked")

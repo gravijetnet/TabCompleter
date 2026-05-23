@@ -32,6 +32,8 @@ import java.nio.file.Path;
 )
 public class VelocityMain {
 
+    static final String PLUGIN_VERSION = "2.0";
+
     private static volatile VelocityMain instance;
 
     private final ProxyServer server;
@@ -44,10 +46,6 @@ public class VelocityMain {
         this.server        = server;
         this.logger        = logger;
         this.dataDirectory = dataDirectory;
-        // instance is set here because Velocity's @Inject model calls the constructor before
-        // onProxyInitialize. pluginConfig is null until onProxyInitialize runs; all event
-        // listeners are registered inside onProxyInitialize so they will never see a null config.
-        instance = this;
     }
 
     @Subscribe
@@ -63,7 +61,8 @@ public class VelocityMain {
                         .build(),
                 new TabCompleterCommand(this));
 
-        logger.info("TabCompleter v2.0 enabled.");
+        logger.info("TabCompleter v{} enabled.", PLUGIN_VERSION);
+        instance = this;
     }
 
     @Subscribe
@@ -98,8 +97,7 @@ public class VelocityMain {
                 if (in != null) {
                     pluginConfig = ConfigLoader.loadProxyFromStream(in);
                 } else {
-                    logger.error("Bundled config.yml not found in JAR — filtering will be disabled!");
-                    pluginConfig = ConfigLoader.loadProxyFromStream(null);
+                    throw new RuntimeException("Bundled config.yml not found in JAR — cannot start safely.");
                 }
             } catch (IOException ex) {
                 throw new RuntimeException("Cannot load config", ex);

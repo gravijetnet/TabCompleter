@@ -9,6 +9,8 @@ import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
 import net.md_5.bungee.event.EventPriority;
 
+import java.util.List;
+
 public class BungeeChatListener implements Listener {
 
     private final BungeeMain plugin;
@@ -19,7 +21,6 @@ public class BungeeChatListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onChatLowest(ChatEvent event) {
-        if (event.isCancelled()) return;
         cancelIfBlocked(event, false);
     }
 
@@ -52,6 +53,7 @@ public class BungeeChatListener implements Listener {
 
     @EventHandler
     public void onTabComplete(TabCompleteEvent event) {
+        if (event.isCancelled()) return;
         if (!(event.getSender() instanceof ProxiedPlayer)) return;
 
         ProxiedPlayer player = (ProxiedPlayer) event.getSender();
@@ -71,10 +73,15 @@ public class BungeeChatListener implements Listener {
             }
         } else {
             // Command name completion — remove blocked suggestions individually.
-            event.getSuggestions().removeIf(suggestion -> {
-                String name = suggestion.startsWith("/") ? suggestion.substring(1) : suggestion;
-                return CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name);
-            });
+            List<String> suggestions = event.getSuggestions();
+            try {
+                suggestions.removeIf(suggestion -> {
+                    String name = suggestion.startsWith("/") ? suggestion.substring(1) : suggestion;
+                    return CommandFilter.isCommandBlocked(plugin.getPluginConfig(), name);
+                });
+            } catch (UnsupportedOperationException ignored) {
+                // getSuggestions() returned an unmodifiable list; filtering skipped for this event.
+            }
         }
     }
 

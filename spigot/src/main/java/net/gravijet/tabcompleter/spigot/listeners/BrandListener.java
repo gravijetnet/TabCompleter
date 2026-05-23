@@ -36,8 +36,9 @@ public class BrandListener implements Listener {
         try {
             String version = org.bukkit.Bukkit.getBukkitVersion(); // e.g. "1.12.2-R0.1-SNAPSHOT"
             String[] parts = version.split("[-.]");
-            int major = Integer.parseInt(parts[0]); // "1"
-            int minor = Integer.parseInt(parts[1]); // "12" or "13" etc.
+            if (parts.length < 2) throw new IllegalArgumentException("unexpected version format: " + version);
+            int major = Integer.parseInt(parts[0]);
+            int minor = Integer.parseInt(parts[1]);
             return major < 1 || (major == 1 && minor < 13);
         } catch (Exception e) {
             // Fall back to the class-presence check if version parsing fails.

@@ -30,6 +30,10 @@ public class TabCompleterCommand extends Command implements TabExecutor {
             return;
         }
 
+        if (!sender.hasPermission(plugin.getPluginConfig().getReloadPermission())) {
+            sender.sendMessage(prefix + "\u00a7cNo permission.");
+            return;
+        }
         sender.sendMessage(prefix + "\u00a76TabCompleter v" + plugin.getDescription().getVersion() + " by gravijet.");
         sender.sendMessage(prefix + "\u00a76Usage: /bungeetabcompleter reload");
     }
