@@ -19,6 +19,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 
 public class SpigotMain extends JavaPlugin {
 
@@ -48,8 +49,6 @@ public class SpigotMain extends JavaPlugin {
         // A failure here must not abort plugin startup.
         registerBrandChannel("MC|Brand");
         registerListeners();
-        // BUG-11: set instance only after full initialisation so other threads cannot
-        // observe a partially-constructed plugin state via getInstance().
         instance = this;
         getLogger().info("TabCompleter v" + getDescription().getVersion() + " enabled.");
     }
@@ -72,8 +71,6 @@ public class SpigotMain extends JavaPlugin {
             pluginConfig = ConfigLoader.load(configFile);
         } catch (IOException e) {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
-            // BUG-10: getResourceAsStream can return null; log a warning instead of silently
-            // producing an empty config that disables all filtering.
             InputStream fallback = getClass().getResourceAsStream("/config.yml");
             if (fallback == null) {
                 getLogger().severe("Bundled config.yml not found in JAR — filtering will be disabled!");
@@ -86,7 +83,6 @@ public class SpigotMain extends JavaPlugin {
         if (tabListener != null) HandlerList.unregisterAll(tabListener);
         if (modernCommandSendListener != null) HandlerList.unregisterAll(modernCommandSendListener);
         if (brandListener != null) HandlerList.unregisterAll(brandListener);
-        // BUG-12: guard against PacketEvents being null/terminated (e.g. during shutdown)
         if (tabPacketListener != null && PacketEvents.getAPI() != null) {
             PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
         }
@@ -106,8 +102,9 @@ public class SpigotMain extends JavaPlugin {
             PacketEvents.getAPI().getEventManager().registerListener(tabPacketListener);
         }
 
-        if (getCommand("tabcompleter") != null) {
-            getCommand("tabcompleter").setTabCompleter(new CustomTabCompleter(this));
+        org.bukkit.command.PluginCommand cmd = getCommand("tabcompleter");
+        if (cmd != null) {
+            cmd.setTabCompleter(new CustomTabCompleter(this));
         }
     }
 

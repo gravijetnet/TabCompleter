@@ -16,14 +16,17 @@ public class TabListener implements Listener {
         this.plugin = plugin;
     }
 
+    // Run at LOWEST (ignoreCancelled=false) to block early so subsequent plugins
+    // never see the command. Run again at HIGHEST (ignoreCancelled=true) to re-block
+    // in case a plugin between LOWEST and HIGHEST un-cancelled the event.
+    // The no-permission message is only sent at HIGHEST to avoid a double message
+    // and to skip it when another plugin cancelled first for a different reason.
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onCommandLowest(PlayerCommandPreprocessEvent event) {
         cancelIfFiltered(event, false);
     }
 
-    // BUG-13: ignoreCancelled = true so we don't send a no-permission message when
-    // another plugin already cancelled the event for an unrelated reason.
-    // We still run at HIGHEST to re-cancel if another plugin un-cancelled between LOWEST and HIGHEST.
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onCommandHighest(PlayerCommandPreprocessEvent event) {
         cancelIfFiltered(event, true);

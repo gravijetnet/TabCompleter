@@ -15,6 +15,7 @@ import net.gravijet.tabcompleter.velocity.VelocityMain;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
 public class VelocityPacketInjector {
@@ -44,7 +45,7 @@ public class VelocityPacketInjector {
     public void onDisconnect(DisconnectEvent event) {
         Channel ch = getChannel(event.getPlayer());
         if (ch == null) return;
-        // BUG-32: pipeline modifications must run on the channel's event loop to be thread-safe
+        // Pipeline modifications must run on the channel's event loop to be thread-safe.
         if (ch.eventLoop().inEventLoop()) {
             if (ch.pipeline().get(HANDLER_NAME) != null) ch.pipeline().remove(HANDLER_NAME);
         } else {
@@ -61,14 +62,21 @@ public class VelocityPacketInjector {
             return;
         }
 
-        // BUG-27: wrap in try-catch — a concurrent inject() call (PostLoginEvent + ServerPostConnectEvent)
-        // can cause addBefore/addAfter to throw IllegalArgumentException if the handler was already added.
-        try {
-            if (channel.pipeline().get(HANDLER_NAME) != null) {
-                channel.pipeline().remove(HANDLER_NAME);
-            }
+        // Pipeline mutations must happen on the channel's I/O thread. PostLoginEvent and
+        // ServerPostConnectEvent fire on async threads, so schedule the work on the event loop.
+        channel.eventLoop().execute(() -> injectOnEventLoop(channel, player));
+    }
 
+    private void injectOnEventLoop(Channel channel, Player player) {
+        try {
             CommandPacketHandler handler = new CommandPacketHandler(plugin, player);
+
+            // Use replace() if the handler is already present to avoid the remove-then-add
+            // race window where a command packet can pass through unfiltered.
+            if (channel.pipeline().get(HANDLER_NAME) != null) {
+                channel.pipeline().replace(HANDLER_NAME, HANDLER_NAME, handler);
+                return;
+            }
 
             for (String before : INJECT_BEFORE) {
                 if (channel.pipeline().get(before) != null) {
@@ -126,8 +134,6 @@ public class VelocityPacketInjector {
             return null;
 
         } catch (Exception e) {
-            // BUG-33: include exception type in the message to distinguish InaccessibleObjectException
-            // (Java 16+ module encapsulation) from other reflection failures.
             plugin.getLogger().warn("[TC] getChannel error for {} ({}): {}",
                     player.getUsername(), e.getClass().getSimpleName(), e.getMessage());
             return null;
@@ -209,18 +215,20 @@ public class VelocityPacketInjector {
         // ------------------------------------------------------------------
 
         private boolean isTabCompleteRequestPacket(Object msg) {
-            String name = msg.getClass().getSimpleName();
-            return name.contains("TabComplete") && !name.toLowerCase().contains("response");
+            String lower = msg.getClass().getSimpleName().toLowerCase();
+            // Must contain "tabcomplete" and must NOT be a response packet.
+            // The additional check that the class is NOT also a command/declare packet
+            // prevents misidentifying modern packets as legacy request packets.
+            return lower.contains("tabcomplete") && !lower.contains("response")
+                    && !lower.contains("available") && !lower.contains("declare");
         }
 
         /**
          * Matches Velocity's internal packet class for the legacy (pre-1.13)
          * tab-complete response sent from the proxy to the client.
-         * In write() all packets are outbound (proxy→client), so any "tabcomplete"
-         * class that is NOT a request is a response. We exclude "request" in the name
-         * to avoid matching TabCompleteRequest if it ever appears here.
-         * Typical class names: "TabCompleteResponse", "LegacyTabCompleteResponse",
-         * or simply "TabComplete" (bidirectional class in some Velocity versions).
+         * We require the class to actually contain a List field (checked via
+         * findStringListRef) before acting, so unrecognised future packets that
+         * happen to match the name heuristic are handled safely.
          */
         private boolean isLegacyTabCompleteResponse(Object msg) {
             String lower = msg.getClass().getSimpleName().toLowerCase();
@@ -283,9 +291,11 @@ public class VelocityPacketInjector {
                 try {
                     ref.field.set(packet, new ArrayList<>(replacement));
                 } catch (Exception ex) {
-                    // BUG-28: log — silent bypass is a security issue (player sees blocked commands)
-                    System.err.println("[TabCompleter] WARNING: Could not replace suggestion list on "
-                            + packet.getClass().getSimpleName() + " — commands may leak: " + ex);
+                    // Security-relevant: blocked commands will be visible to the player.
+                    // Log via SLF4J so the message appears in the server log file.
+                    org.slf4j.LoggerFactory.getLogger(VelocityPacketInjector.class)
+                            .warn("[TC] Could not replace suggestion list on {} — commands may leak: {}",
+                                    packet.getClass().getSimpleName(), ex.toString());
                 }
             }
         }
@@ -323,8 +333,6 @@ public class VelocityPacketInjector {
                     continue;
                 }
                 String name = text.startsWith("/") ? text.substring(1) : text;
-                // BUG-26: only test the full name (and namespace prefix via CommandFilter);
-                // testing the suffix after ':' incorrectly allows "evil:help" when "help" is allowed.
                 if (visible.test(name)) {
                     kept.add(entry);
                 }
@@ -389,11 +397,11 @@ public class VelocityPacketInjector {
                     || fullName.contains("availablecommands") || fullName.contains("declarecommands")) {
                 return true;
             }
-            // BUG-29: only match RootCommandNode specifically (not generic CommandNode fields)
-            // to avoid false-positives on unrelated packets that happen to hold a CommandNode.
+            // Only match RootCommandNode exactly to avoid false-positives on unrelated
+            // packets that happen to hold a CommandNode subclass.
             for (Class<?> c = msg.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
-                    if (f.getType().getSimpleName().contains("RootCommandNode")) {
+                    if ("RootCommandNode".equals(f.getType().getSimpleName())) {
                         return true;
                     }
                 }
@@ -410,7 +418,7 @@ public class VelocityPacketInjector {
                 Object root = rootField.get(packet);
                 if (root == null) return;
 
-                VelocityNativeListener.filterRoot(root, player, plugin.getPluginConfig(), null);
+                VelocityNativeListener.filterRoot(root, player, plugin.getPluginConfig(), plugin.getLogger());
             } catch (Exception e) {
                 plugin.getLogger().warn("[TC] filterModernCommandPacket error for {}: {}", player.getUsername(), e.getMessage());
             }
@@ -426,9 +434,11 @@ public class VelocityPacketInjector {
         }
 
         private String extractPartialCommand(Object packet) {
-            // BUG-30: prefer fields whose name indicates they hold the partial command text
-            // before falling back to the first non-empty String to avoid returning e.g. a transaction ID.
-            String fallback = null;
+            // Prefer fields whose name indicates they hold the partial command text.
+            // Only fall back to the first non-empty String field when no named match is found,
+            // and log a debug warning so operators know the fallback was used.
+            String fallbackValue = null;
+            String fallbackFieldName = null;
             for (Class<?> c = packet.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
                     if (f.getType() != String.class) continue;
@@ -440,26 +450,51 @@ public class VelocityPacketInjector {
                         if (fn.contains("text") || fn.contains("command") || fn.contains("partial") || fn.contains("input")) {
                             return val;
                         }
-                        if (fallback == null) fallback = val;
+                        if (fallbackValue == null) {
+                            fallbackValue = val;
+                            fallbackFieldName = f.getName();
+                        }
                     } catch (Exception ignored) {}
                 }
             }
-            return fallback;
+            if (fallbackValue != null) {
+                plugin.getLogger().debug("[TC] extractPartialCommand: falling back to field '{}' on {} — may be inaccurate",
+                        fallbackFieldName, packet.getClass().getSimpleName());
+            }
+            return fallbackValue;
+        }
+
+        private static final ConcurrentHashMap<Class<?>, Field> ROOT_FIELD_CACHE = new ConcurrentHashMap<>();
+        private static final Field ROOT_FIELD_ABSENT = findSentinelField();
+
+        private static Field findSentinelField() {
+            try { return Object.class.getDeclaredField("does_not_exist_sentinel"); }
+            catch (NoSuchFieldException e) { return null; }
         }
 
         private static Field findRootField(Class<?> startClass) {
+            Field cached = ROOT_FIELD_CACHE.get(startClass);
+            if (cached == ROOT_FIELD_ABSENT) return null;
+            if (cached != null) return cached;
+
+            Field found = null;
+            outer:
             for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
                 for (Field f : c.getDeclaredFields()) {
-                    if (f.getType().getSimpleName().contains("RootCommandNode")) return f;
+                    if ("RootCommandNode".equals(f.getType().getSimpleName())) { found = f; break outer; }
                 }
             }
-            for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
-                for (Field f : c.getDeclaredFields()) {
-                    String n = f.getName();
-                    if (n.equals("rootNode") || n.equals("root") || n.equals("commandTree")) return f;
+            if (found == null) {
+                outer:
+                for (Class<?> c = startClass; c != null; c = c.getSuperclass()) {
+                    for (Field f : c.getDeclaredFields()) {
+                        String n = f.getName();
+                        if (n.equals("rootNode") || n.equals("root") || n.equals("commandTree")) { found = f; break outer; }
+                    }
                 }
             }
-            return null;
+            ROOT_FIELD_CACHE.put(startClass, found != null ? found : ROOT_FIELD_ABSENT);
+            return found;
         }
     }
 }

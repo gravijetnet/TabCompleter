@@ -19,11 +19,13 @@ public class BungeeChatListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onChatLowest(ChatEvent event) {
+        if (event.isCancelled()) return;
         cancelIfBlocked(event, false);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onChatHighest(ChatEvent event) {
+        if (event.isCancelled()) return;
         cancelIfBlocked(event, true);
     }
 
@@ -59,6 +61,7 @@ public class BungeeChatListener implements Listener {
         if (cursor == null || !cursor.startsWith("/")) return;
 
         String afterSlash = cursor.substring(1);
+        if (afterSlash.isEmpty()) return;
 
         if (afterSlash.contains(" ")) {
             // Argument completion — block entirely if base command is blocked.

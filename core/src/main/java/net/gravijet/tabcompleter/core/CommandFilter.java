@@ -10,11 +10,6 @@ public final class CommandFilter {
 
     private CommandFilter() {}
 
-    /**
-     * Lowercases using a fixed locale. Using the JVM default locale here is a bug:
-     * on a Turkish/Azeri server {@code "LIST".toLowerCase()} yields {@code "lıst"}
-     * (dotless i), which no longer matches the configured {@code list} entry.
-     */
     private static String lower(String s) {
         return s.toLowerCase(Locale.ROOT);
     }
@@ -37,12 +32,12 @@ public final class CommandFilter {
             }
             if (hasAnyGroup) {
                 Set<String> allowed = collectAllowedCommands(config, hasPermission);
-                // Global 'commands' list acts as a base that all players can access,
-                // regardless of which group they are in (allowlist mode only).
-                if ("allowlist".equalsIgnoreCase(config.getSpigotMode())) {
-                    for (String c : config.getCommands()) {
-                        allowed.add(lower(c));
-                    }
+                // In allowlist mode: merge the global commands list so every player can
+                // access those regardless of group membership.
+                // In blocklist mode with groups: the group commands list defines what is
+                // allowed; the global commands list is treated the same way (allowed base).
+                for (String c : config.getCommands()) {
+                    allowed.add(lower(c));
                 }
                 return cmd -> isCommandInSet(allowed, lower(cmd));
             }
@@ -97,12 +92,13 @@ public final class CommandFilter {
     /** Returns true if the command should be blocked (pure blocklist check, namespace-prefix only). */
     public static boolean isCommandBlocked(PluginConfig config, String cmd) {
         String lower = lower(cmd);
+        String lowerNs = lower.contains(":") ? lower.split(":", 2)[0] : null;
         for (String blocked : config.getCommands()) {
-            // BUG-02: both sides lowercased with Locale.ROOT for consistent comparison
-            if (lower(blocked).equals(lower)) return true;
+            String lowerBlocked = lower(blocked);
+            if (lowerBlocked.equals(lower)) return true;
             // namespace prefix: blocking "essentials" also blocks "essentials:friend"
             // but blocking "friend" does NOT block "essentials:friend"
-            if (lower.contains(":") && lower(blocked).equals(lower.split(":", 2)[0])) return true;
+            if (lowerNs != null && lowerBlocked.equals(lowerNs)) return true;
         }
         return false;
     }
@@ -114,10 +110,11 @@ public final class CommandFilter {
      */
     private static boolean isCommandInAllowList(List<String> list, String cmd) {
         String lower = lower(cmd);
+        String lowerNs = lower.contains(":") ? lower.split(":", 2)[0] : null;
         for (String entry : list) {
-            // BUG-03: both sides lowercased with Locale.ROOT for consistent comparison
-            if (lower(entry).equals(lower)) return true;
-            if (lower.contains(":") && lower(entry).equals(lower.split(":", 2)[0])) return true;
+            String lowerEntry = lower(entry);
+            if (lowerEntry.equals(lower)) return true;
+            if (lowerNs != null && lowerEntry.equals(lowerNs)) return true;
         }
         return false;
     }

@@ -24,7 +24,6 @@ public class BungeeMain extends Plugin {
         saveDefaultConfig();
         loadConfiguration();
         registerListeners();
-        // BUG-16: set instance only after full initialisation
         instance = this;
         getLogger().info("TabCompleter v" + getDescription().getVersion() + " enabled.");
     }
@@ -70,16 +69,11 @@ public class BungeeMain extends Plugin {
     }
 
     private void registerListeners() {
-        // BUG-18: construct new listeners before unregistering the old ones to minimise
-        // the window during which no listener is active on reload.
-        BungeeChatListener chatListener   = new BungeeChatListener(this);
-        BungeeBrandListener brandListener = new BungeeBrandListener(this);
-        TabCompleterCommand command       = new TabCompleterCommand(this);
         getProxy().getPluginManager().unregisterListeners(this);
-        getProxy().getPluginManager().registerListener(this, chatListener);
-        getProxy().getPluginManager().registerListener(this, brandListener);
         getProxy().getPluginManager().unregisterCommands(this);
-        getProxy().getPluginManager().registerCommand(this, command);
+        getProxy().getPluginManager().registerListener(this, new BungeeChatListener(this));
+        getProxy().getPluginManager().registerListener(this, new BungeeBrandListener(this));
+        getProxy().getPluginManager().registerCommand(this, new TabCompleterCommand(this));
     }
 
     public static BungeeMain getInstance() { return instance; }

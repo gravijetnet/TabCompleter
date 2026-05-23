@@ -29,11 +29,24 @@ public class BrandListener implements Listener {
     }
 
     private static boolean isLegacy() {
+        // PlayerCommandSendEvent was added in Bukkit 1.13, the same version that
+        // replaced the "MC|Brand" channel with "minecraft:brand". Using the API class
+        // as a proxy is correct, but checking the Bukkit version string directly is
+        // more robust against backport builds that add the class without the channel.
         try {
-            Class.forName("org.bukkit.event.player.PlayerCommandSendEvent");
-            return false;
-        } catch (ClassNotFoundException e) {
-            return true;
+            String version = org.bukkit.Bukkit.getBukkitVersion(); // e.g. "1.12.2-R0.1-SNAPSHOT"
+            String[] parts = version.split("[-.]");
+            int major = Integer.parseInt(parts[0]); // "1"
+            int minor = Integer.parseInt(parts[1]); // "12" or "13" etc.
+            return major < 1 || (major == 1 && minor < 13);
+        } catch (Exception e) {
+            // Fall back to the class-presence check if version parsing fails.
+            try {
+                Class.forName("org.bukkit.event.player.PlayerCommandSendEvent");
+                return false;
+            } catch (ClassNotFoundException ex) {
+                return true;
+            }
         }
     }
 }

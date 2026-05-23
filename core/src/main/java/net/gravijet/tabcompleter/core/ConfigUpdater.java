@@ -24,6 +24,11 @@ public final class ConfigUpdater {
      * Key renames: oldKey -> newKey.
      * Add entries here when a config key is renamed in a new plugin version.
      * A rename is only applied when the old key exists and the new key does not.
+     *
+     * IMPORTANT: entries must be ordered so that no newKey equals a subsequent oldKey
+     * (i.e. no chained renames A→B, B→C in the same map iteration), otherwise the
+     * first rename produces a key that the second rename immediately renames again.
+     * Use distinct rename entries across plugin releases rather than chaining.
      */
     private static final Map<String, String> RENAMES;
     static {
@@ -90,14 +95,21 @@ public final class ConfigUpdater {
         }
 
         if (modified) {
-            // BUG-07: write to a temp file then atomically rename so a mid-write crash
-            // never leaves the config file empty or truncated.
             Path target = file.toPath();
             Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
             try (Writer w = new OutputStreamWriter(new FileOutputStream(tmp.toFile()), StandardCharsets.UTF_8)) {
                 w.write(userText);
             }
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            // Prefer atomic move; fall back to non-atomic on filesystems that don't support it
+            // (e.g. cross-device, FAT32, some network shares). The tmp file is always cleaned up.
+            try {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException ex) {
+                Files.deleteIfExists(tmp);
+                throw ex;
+            }
         }
         return modified;
     }
@@ -117,12 +129,17 @@ public final class ConfigUpdater {
         }
         if (keyLine == -1) return "";
 
-        // BUG-06: walk backwards only over comment lines; stop at the first blank line
-        // so we don't pull trailing blanks that visually belong to the previous key.
+        // Walk backwards over comment lines only; stop at blank or non-comment lines.
         int start = keyLine;
         while (start > 0 && lines[start - 1].startsWith("#")) start--;
-        // Allow a single blank separator line immediately before the comment block.
-        if (start > 0 && lines[start - 1].trim().isEmpty()) start--;
+        // Include at most one blank separator line immediately before the comment block
+        // (which visually belongs to this key, not the previous one).
+        // Guard: only include it if the line before that is NOT also blank, to avoid
+        // pulling in double-blank-line separators that belong to the previous block.
+        if (start > 0 && lines[start - 1].trim().isEmpty()
+                && (start < 2 || !lines[start - 2].trim().isEmpty())) {
+            start--;
+        }
 
         // Walk forwards past indented continuation lines (list items, sub-keys, etc.)
         int end = keyLine + 1;

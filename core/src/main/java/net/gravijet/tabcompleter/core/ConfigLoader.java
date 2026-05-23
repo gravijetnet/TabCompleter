@@ -62,13 +62,14 @@ public final class ConfigLoader {
         if (isProxy) {
             mode   = "blocklist";
             cmds   = strList(data, "blocked-commands");
-            groups = parseGroups(data);
+            groups = Collections.emptyMap(); // proxy mode never uses groups
         } else {
             mode = str(data, "mode", "allowlist");
-            // Prefer "commands" (current name); fall back to "allowed-commands" then "blocked-commands" for compat.
+            // Prefer "commands" (current canonical name); fall back to "allowed-commands" for compat.
+            // Do NOT fall back to "blocked-commands": in allowlist mode that would silently treat
+            // blocked-commands entries as the allowlist, hiding almost every command from players.
             cmds = strList(data, "commands");
             if (cmds.isEmpty()) cmds = strList(data, "allowed-commands");
-            if (cmds.isEmpty()) cmds = strList(data, "blocked-commands");
             groups = parseGroups(data);
         }
 
