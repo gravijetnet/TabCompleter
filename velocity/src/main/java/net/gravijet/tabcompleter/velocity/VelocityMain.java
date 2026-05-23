@@ -32,7 +32,7 @@ import java.nio.file.Path;
 )
 public class VelocityMain {
 
-    static final String PLUGIN_VERSION = "2.0";
+    public static final String PLUGIN_VERSION = "2.0";
 
     private static volatile VelocityMain instance;
 
