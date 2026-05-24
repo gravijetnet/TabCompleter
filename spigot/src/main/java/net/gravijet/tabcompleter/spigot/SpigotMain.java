@@ -1,6 +1,7 @@
 package net.gravijet.tabcompleter.spigot;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import net.gravijet.tabcompleter.core.ConfigLoader;
 import net.gravijet.tabcompleter.core.ConfigUpdater;
 import net.gravijet.tabcompleter.core.PluginConfig;
@@ -30,7 +31,15 @@ public class SpigotMain extends JavaPlugin {
     private Listener brandListener;
 
     @Override
+    public void onLoad() {
+        PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
+        PacketEvents.getAPI().getSettings().reEncodeByDefault(false).checkForUpdates(false);
+        PacketEvents.getAPI().load();
+    }
+
+    @Override
     public void onEnable() {
+        PacketEvents.getAPI().init();
         saveDefaultConfig();
         loadConfiguration();
         registerBrandChannel("minecraft:brand");
@@ -47,6 +56,9 @@ public class SpigotMain extends JavaPlugin {
         if (tabPacketListener != null && PacketEvents.getAPI() != null) {
             PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
             tabPacketListener = null;
+        }
+        if (PacketEvents.getAPI() != null) {
+            PacketEvents.getAPI().terminate();
         }
         getLogger().info("TabCompleter disabled.");
     }

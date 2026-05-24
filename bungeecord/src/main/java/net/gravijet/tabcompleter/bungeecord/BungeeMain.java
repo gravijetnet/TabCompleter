@@ -54,7 +54,6 @@ public class BungeeMain extends Plugin {
             pluginConfig = ConfigLoader.loadProxy(configFile);
         } catch (IOException e) {
             getLogger().severe("Failed to load config.yml: " + e.getMessage());
-            // BUG-17: ensure pluginConfig is always set; warn explicitly if bundled resource is missing
             try (InputStream in = getResourceAsStream("config.yml")) {
                 if (in != null) {
                     pluginConfig = ConfigLoader.loadProxyFromStream(in);
