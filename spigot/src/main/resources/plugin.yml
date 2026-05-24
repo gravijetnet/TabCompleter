@@ -3,6 +3,7 @@ version: 2.0
 main: net.gravijet.tabcompleter.spigot.SpigotMain
 description: Restricts tab completion and command execution based on permissions.
 author: gravijet
+softdepend: [packetevents]
 
 commands:
   tabcompleter:
