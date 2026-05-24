@@ -55,6 +55,10 @@ public class SpigotMain extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (tabPacketListener != null && PacketEvents.getAPI() != null) {
+            PacketEvents.getAPI().getEventManager().unregisterListener(tabPacketListener);
+            tabPacketListener = null;
+        }
         if (PacketEvents.getAPI() != null) {
             PacketEvents.getAPI().terminate();
         }
